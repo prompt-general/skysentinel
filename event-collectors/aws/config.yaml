@@ -1,0 +1,79 @@
+# AWS Event Collector Configuration
+
+# AWS Credentials and Region
+credentials:
+  access_key_id: "${AWS_ACCESS_KEY_ID}"
+  secret_access_key: "${AWS_SECRET_ACCESS_KEY}"
+  session_token: "${AWS_SESSION_TOKEN}"  # Optional, for temporary credentials
+
+region: "us-east-1"
+
+# Event Collection Settings
+event_sources:
+  - "aws.ec2"
+  - "aws.s3"
+  - "aws.iam"
+  - "aws.rds"
+  - "aws.lambda"
+
+# Polling Configuration
+poll_interval: 30  # seconds
+batch_size: 100
+retry_attempts: 3
+enable_compression: true
+
+# Event Filtering
+event_filters:
+  include_event_types:
+    - "API_CALL"
+    - "RESOURCE_CREATE"
+    - "RESOURCE_DELETE"
+    - "PERMISSION_MODIFY"
+    - "DATA_ACCESS"
+    - "NETWORK_MODIFY"
+  
+  exclude_event_names:
+    - "Get*"
+    - "List*"
+    - "Describe*"
+    - "HeadBucket"
+  
+  include_error_events: true
+  include_success_events: true
+
+# CloudTrail Settings
+cloudtrail:
+  lookup_attributes:
+    - AttributeKey: "EventName"
+      AttributeValue: ""
+  max_results: 100
+  
+# EventBridge Settings
+eventbridge:
+  rule_name: "skysentinel-collector"
+  event_pattern:
+    source: ["aws.ec2", "aws.s3", "aws.iam", "aws.rds", "aws.lambda"]
+    detail-type: ["AWS API Call via CloudTrail"]
+
+# Logging Configuration
+logging:
+  level: "INFO"
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  file: "/var/log/skysentinel/aws-collector.log"
+
+# Performance Settings
+performance:
+  max_concurrent_requests: 10
+  timeout: 30
+  backoff_factor: 2
+
+# Security Settings
+security:
+  validate_ssl: true
+  use_vpc_endpoints: false
+  
+# Monitoring
+monitoring:
+  metrics_enabled: true
+  health_check_interval: 300  # seconds
+  export_metrics_to_cloudwatch: true
