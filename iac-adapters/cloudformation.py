@@ -8,6 +8,7 @@ from .base import (
     IaCAdapter, IaCType, IaCPlan, IaCResource, IaCDependency, 
     IaCValidationResult, ResourceType, CloudProvider
 )
+from shared.models.events import ResourceReference
 
 
 class CloudFormationAdapter(IaCAdapter):
@@ -104,6 +105,87 @@ class CloudFormationAdapter(IaCAdapter):
             'AWS::': CloudProvider.AWS,
         }
     
+    def parse(self, change_set: Dict) -> List[ResourceReference]:
+        """Parse CloudFormation change set and return list of ResourceReferences"""
+        resources = []
+        
+        for change in change_set.get('Changes', []):
+            resource_change = change.get('ResourceChange', {})
+            resource_type = resource_change.get('ResourceType', '')
+            
+            # Only process resources that are being created or updated
+            action = resource_change.get('Action')
+            if action not in ['Create', 'Update', 'Delete']:
+                continue
+            
+            normalized = self.normalize_resource(resource_change)
+            if normalized:
+                resources.append(normalized)
+        
+        return resources
+
+    def normalize_resource(self, cf_resource: Dict) -> Optional[ResourceReference]:
+        """Normalize a CloudFormation resource to our model."""
+        resource_type = cf_resource.get('ResourceType', '')
+        
+        # Example: AWS::S3::Bucket -> aws:s3:bucket
+        cloud, service, resource = self._parse_cf_type(resource_type)
+        
+        if not cloud:
+            return None
+        
+        # Use the LogicalResourceId as the name
+        logical_id = cf_resource.get('LogicalResourceId', '')
+        
+        # We don't have the actual ARN until creation, so we use a placeholder
+        # For IaC, we use CloudFormation logical ID as ID because it's unique within the stack
+        resource_id = f"cloudformation:{logical_id}"
+        
+        # Extract tags from the resource properties (if available)
+        tags = {}
+        properties = cf_resource.get('Details', {}).get('Properties', {})
+        if 'Tags' in properties:
+            tags = {tag['Key']: tag['Value'] for tag in properties['Tags']}
+        
+        # Extract region and account if available
+        region = properties.get('Region') or cf_resource.get('Region')
+        account = properties.get('AccountId') or cf_resource.get('AccountId')
+        
+        return ResourceReference(
+            id=resource_id,
+            type=f"{cloud}:{service}:{resource}",
+            region=region,
+            account=account,
+            name=logical_id,
+            tags=tags,
+            properties=properties,
+            metadata={
+                'iac_type': 'cloudformation',
+                'logical_id': logical_id,
+                'resource_type': resource_type,
+                'action': cf_resource.get('Action'),
+                'change_set_id': cf_resource.get('ChangeSetId'),
+                'stack_name': cf_resource.get('StackName'),
+                'properties': properties
+            }
+        )
+    
+    def _parse_cf_type(self, cf_type: str) -> tuple:
+        """Parse CloudFormation resource type to (cloud, service, resource)."""
+        # Example: AWS::S3::Bucket -> (aws, s3, bucket)
+        if not cf_type.startswith('AWS::'):
+            return (None, None, None)
+        
+        parts = cf_type[5:].split('::')
+        if len(parts) < 2:
+            return (None, None, None)
+        
+        cloud = 'aws'
+        service = parts[0].lower()
+        resource = parts[1].lower()
+        
+        return (cloud, service, resource)
+    
     def parse_plan(self, plan_content: Union[str, Dict]) -> IaCPlan:
         """Parse CloudFormation change set or template"""
         if isinstance(plan_content, str):
@@ -159,39 +241,6 @@ class CloudFormationAdapter(IaCAdapter):
     def parse_configuration(self, config_content: Union[str, Dict]) -> IaCPlan:
         """Parse CloudFormation configuration (same as template)"""
         return self.parse_plan(config_content)
-    
-    def normalize_resource(self, raw_resource: Dict) -> IaCResource:
-        """Normalize CloudFormation resource to unified model"""
-        resource_type = raw_resource.get('Type', '')
-        resource_name = raw_resource.get('LogicalId', '')
-        properties = raw_resource.get('Properties', {})
-        
-        # Extract provider (always AWS for CloudFormation)
-        provider = CloudProvider.AWS
-        
-        # Create resource ID
-        resource_id = f"{resource_type}.{resource_name}"
-        
-        # Extract change type (default to create for templates)
-        change_type = raw_resource.get('ChangeType', 'create')
-        
-        return IaCResource(
-            id=resource_id,
-            type=resource_type,
-            name=resource_name,
-            provider=provider,
-            resource_category=self._normalize_resource_type(resource_type),
-            properties=self._sanitize_properties(properties),
-            change_type=change_type,
-            metadata={
-                'logical_id': resource_name,
-                'condition': raw_resource.get('Condition'),
-                'creation_policy': raw_resource.get('CreationPolicy'),
-                'deletion_policy': raw_resource.get('DeletionPolicy'),
-                'update_policy': raw_resource.get('UpdatePolicy'),
-                'metadata': raw_resource.get('Metadata', {})
-            }
-        )
     
     def extract_dependencies(self, iac_content: Dict) -> List[IaCDependency]:
         """Extract dependencies from CloudFormation template"""
@@ -364,6 +413,19 @@ class CloudFormationAdapter(IaCAdapter):
         """Extract cloud provider from CloudFormation resource"""
         # CloudFormation is always AWS
         return CloudProvider.AWS
+    
+    def _to_iac_resource(self, resource_ref: ResourceReference) -> IaCResource:
+        """Convert ResourceReference to IaCResource"""
+        return IaCResource(
+            id=resource_ref.id,
+            type=resource_ref.type,
+            name=resource_ref.name,
+            provider=CloudProvider.AWS,
+            resource_category=self._normalize_resource_type(resource_ref.type),
+            properties=resource_ref.properties,
+            metadata=resource_ref.metadata,
+            change_type=resource_ref.metadata.get('action', 'create')
+        )
 
 
 # Register the adapter
