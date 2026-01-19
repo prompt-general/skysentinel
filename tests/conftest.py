@@ -3,6 +3,7 @@ import tempfile
 import os
 import sys
 from pathlib import Path
+from unittest.mock import Mock, MagicMock
 
 # Add project root to path
 project_root = Path(__file__).parent.parent
@@ -10,6 +11,67 @@ sys.path.insert(0, str(project_root))
 
 from graph_engine.service import GraphEngine
 from shared.models.events import CloudProvider, NormalizedEvent, Principal, ResourceReference
+
+
+@pytest.fixture
+def mock_neo4j_driver():
+    """Mock Neo4j driver for testing"""
+    driver = Mock()
+    session = Mock()
+    result = Mock()
+    record = Mock()
+    
+    # Default mock responses
+    record.return_value = {"count": 0}
+    result.single.return_value = record
+    result.data.return_value = []
+    session.run.return_value = result
+    driver.session.return_value = session
+    
+    return driver
+
+
+@pytest.fixture
+def mock_cloud_clients():
+    """Mock cloud client configurations"""
+    return {
+        'aws': {
+            'eventbridge': Mock(),
+            's3': Mock(),
+            'ec2': Mock(),
+            'iam': Mock(),
+            'config': Mock()
+        },
+        'azure': {
+            'policy_client': Mock(),
+            'resource_client': Mock(),
+            'storage_client': Mock(),
+            'compute_client': Mock()
+        },
+        'gcp': {
+            'cloud_resource_manager': Mock(),
+            'storage_client': Mock(),
+            'compute_client': Mock()
+        }
+    }
+
+
+@pytest.fixture
+def mock_redis():
+    """Mock Redis client for testing"""
+    redis_client = Mock()
+    redis_client.decode_responses.return_value = True
+    redis_client.llen.return_value = 0
+    redis_client.lpush.return_value = 1
+    redis_client.brpop.return_value = None
+    redis_client.get.return_value = None
+    redis_client.set.return_value = True
+    redis_client.setex.return_value = True
+    redis_client.keys.return_value = []
+    redis_client.hincrby.return_value = 1
+    redis_client.hgetall.return_value = {}
+    redis_client.pipeline.return_value = Mock()
+    return redis_client
 
 
 @pytest.fixture(scope="session")
