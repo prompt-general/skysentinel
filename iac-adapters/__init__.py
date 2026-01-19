@@ -40,6 +40,7 @@ from .base import (
 from .terraform import TerraformAdapter
 from .cloudformation import CloudFormationAdapter
 from .kubernetes import KubernetesAdapter
+from .arm import ARMAdapter
 
 __version__ = "1.0.0"
 __author__ = "SkySentinel Team"
@@ -63,6 +64,7 @@ __all__ = [
     'TerraformAdapter',
     'CloudFormationAdapter',
     'KubernetesAdapter',
+    'ARMAdapter',
     
     # Enums
     'IaCType',
@@ -77,10 +79,12 @@ def _register_all_adapters():
     from .terraform import TerraformAdapter
     from .cloudformation import CloudFormationAdapter
     from .kubernetes import KubernetesAdapter
+    from .arm import ARMAdapter
     
     IaCAdapterFactory.register_adapter(IaCType.TERRAFORM, TerraformAdapter)
     IaCAdapterFactory.register_adapter(IaCType.CLOUDFORMATION, CloudFormationAdapter)
     IaCAdapterFactory.register_adapter(IaCType.KUBERNETES, KubernetesAdapter)
+    IaCAdapterFactory.register_adapter(IaCType.ARM_TEMPLATE, ARMAdapter)
 
 # Register adapters on import
 _register_all_adapters()
