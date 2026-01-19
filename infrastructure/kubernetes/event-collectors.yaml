@@ -1,0 +1,350 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: event-collector-aws
+  namespace: skysentinel
+  labels:
+    app: event-collector-aws
+    component: event-collector
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: event-collector-aws
+  template:
+    metadata:
+      labels:
+        app: event-collector-aws
+        component: event-collector
+    spec:
+      serviceAccountName: skysentinel-collector
+      containers:
+      - name: aws-collector
+        image: skysentinel/event-collector-aws:latest
+        imagePullPolicy: Always
+        env:
+        - name: AWS_REGION
+          value: "us-east-1"
+        - name: NEO4J_URI
+          value: "bolt://neo4j.skysentinel.svc.cluster.local:7687"
+        - name: NEO4J_USER
+          valueFrom:
+            secretKeyRef:
+              name: neo4j-credentials
+              key: username
+        - name: NEO4J_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: neo4j-credentials
+              key: password
+        - name: ACCOUNTS_TO_MONITOR
+          valueFrom:
+            configMapKeyRef:
+              name: skysentinel-config
+              key: aws_accounts
+        - name: LOG_LEVEL
+          value: "INFO"
+        - name: POLL_INTERVAL
+          value: "30"
+        - name: BATCH_SIZE
+          value: "100"
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "500m"
+          limits:
+            memory: "1Gi"
+            cpu: "1"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 8080
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        securityContext:
+          runAsNonRoot: true
+          runAsUser: 1000
+          runAsGroup: 1000
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+        volumeMounts:
+        - name: config
+          mountPath: /app/config
+          readOnly: true
+        - name: logs
+          mountPath: /app/logs
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+      restartPolicy: Always
+      volumes:
+      - name: config
+        configMap:
+          name: skysentinel-config
+      - name: logs
+        emptyDir: {}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: event-collector-azure
+  namespace: skysentinel
+  labels:
+    app: event-collector-azure
+    component: event-collector
+spec:
+  replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: event-collector-azure
+  template:
+    metadata:
+      labels:
+        app: event-collector-azure
+        component: event-collector
+    spec:
+      serviceAccountName: skysentinel-collector
+      containers:
+      - name: azure-collector
+        image: skysentinel/event-collector-azure:latest
+        imagePullPolicy: Always
+        env:
+        - name: AZURE_SUBSCRIPTION_ID
+          valueFrom:
+            configMapKeyRef:
+              name: skysentinel-config
+              key: azure_subscription_id
+        - name: NEO4J_URI
+          value: "bolt://neo4j.skysentinel.svc.cluster.local:7687"
+        - name: NEO4J_USER
+          valueFrom:
+            secretKeyRef:
+              name: neo4j-credentials
+              key: username
+        - name: NEO4J_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: neo4j-credentials
+              key: password
+        - name: LOG_LEVEL
+          value: "INFO"
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "500m"
+          limits:
+            memory: "1Gi"
+            cpu: "1"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 8080
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        securityContext:
+          runAsNonRoot: true
+          runAsUser: 1000
+          runAsGroup: 1000
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+        volumeMounts:
+        - name: config
+          mountPath: /app/config
+          readOnly: true
+        - name: logs
+          mountPath: /app/logs
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+      restartPolicy: Always
+      volumes:
+      - name: config
+        configMap:
+          name: skysentinel-config
+      - name: logs
+        emptyDir: {}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: event-collector-gcp
+  namespace: skysentinel
+  labels:
+    app: event-collector-gcp
+    component: event-collector
+spec:
+  replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: event-collector-gcp
+  template:
+    metadata:
+      labels:
+        app: event-collector-gcp
+        component: event-collector
+    spec:
+      serviceAccountName: skysentinel-collector
+      containers:
+      - name: gcp-collector
+        image: skysentinel/event-collector-gcp:latest
+        imagePullPolicy: Always
+        env:
+        - name: GCP_PROJECT_ID
+          valueFrom:
+            configMapKeyRef:
+              name: skysentinel-config
+              key: gcp_project_id
+        - name: NEO4J_URI
+          value: "bolt://neo4j.skysentinel.svc.cluster.local:7687"
+        - name: NEO4J_USER
+          valueFrom:
+            secretKeyRef:
+              name: neo4j-credentials
+              key: username
+        - name: NEO4J_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: neo4j-credentials
+              key: password
+        - name: LOG_LEVEL
+          value: "INFO"
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "500m"
+          limits:
+            memory: "1Gi"
+            cpu: "1"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 8080
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        securityContext:
+          runAsNonRoot: true
+          runAsUser: 1000
+          runAsGroup: 1000
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+        volumeMounts:
+        - name: config
+          mountPath: /app/config
+          readOnly: true
+        - name: logs
+          mountPath: /app/logs
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+      restartPolicy: Always
+      volumes:
+      - name: config
+        configMap:
+          name: skysentinel-config
+      - name: logs
+        emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: event-collector-aws
+  namespace: skysentinel
+  labels:
+    app: event-collector-aws
+    component: event-collector
+spec:
+  type: ClusterIP
+  ports:
+  - name: http
+    port: 8080
+    targetPort: 8080
+    protocol: TCP
+  selector:
+    app: event-collector-aws
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: event-collector-azure
+  namespace: skysentinel
+  labels:
+    app: event-collector-azure
+    component: event-collector
+spec:
+  type: ClusterIP
+  ports:
+  - name: http
+    port: 8080
+    targetPort: 8080
+    protocol: TCP
+  selector:
+    app: event-collector-azure
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: event-collector-gcp
+  namespace: skysentinel
+  labels:
+    app: event-collector-gcp
+    component: event-collector
+spec:
+  type: ClusterIP
+  ports:
+  - name: http
+    port: 8080
+    targetPort: 8080
+    protocol: TCP
+  selector:
+    app: event-collector-gcp

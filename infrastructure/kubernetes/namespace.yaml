@@ -1,0 +1,23 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: skysentinel
+  labels:
+    name: skysentinel
+    environment: production
+    component: security-platform
+  annotations:
+    description: "SkySentinel security monitoring platform namespace"
+    contact: "security-team@company.com"
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: skysentinel-monitoring
+  labels:
+    name: skysentinel-monitoring
+    environment: production
+    component: monitoring
+  annotations:
+    description: "SkySentinel monitoring and logging namespace"
+    contact: "ops-team@company.com"

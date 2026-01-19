@@ -1,0 +1,129 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: skysentinel-collector
+  namespace: skysentinel
+  labels:
+    app: skysentinel
+    component: event-collector
+  annotations:
+    description: "Service account for SkySentinel event collectors"
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: skysentinel-api
+  namespace: skysentinel
+  labels:
+    app: skysentinel
+    component: api-gateway
+  annotations:
+    description: "Service account for SkySentinel API gateway"
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: skysentinel-dashboard
+  namespace: skysentinel
+  labels:
+    app: skysentinel
+    component: dashboard
+  annotations:
+    description: "Service account for SkySentinel dashboard"
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: skysentinel-collector
+  labels:
+    app: skysentinel
+    component: event-collector
+rules:
+- apiGroups: [""]
+  resources: ["pods", "services", "endpoints", "configmaps", "secrets"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["apps"]
+  resources: ["deployments", "replicasets", "statefulsets"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: [""]
+  resources: ["events"]
+  verbs: ["create", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: skysentinel-collector
+  labels:
+    app: skysentinel
+    component: event-collector
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: skysentinel-collector
+subjects:
+- kind: ServiceAccount
+  name: skysentinel-collector
+  namespace: skysentinel
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: skysentinel-api
+  namespace: skysentinel
+  labels:
+    app: skysentinel
+    component: api-gateway
+rules:
+- apiGroups: [""]
+  resources: ["pods", "services", "configmaps", "secrets"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["apps"]
+  resources: ["deployments", "replicasets"]
+  verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: skysentinel-api
+  namespace: skysentinel
+  labels:
+    app: skysentinel
+    component: api-gateway
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: skysentinel-api
+subjects:
+- kind: ServiceAccount
+  name: skysentinel-api
+  namespace: skysentinel
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: skysentinel-dashboard
+  namespace: skysentinel
+  labels:
+    app: skysentinel
+    component: dashboard
+rules:
+- apiGroups: [""]
+  resources: ["pods", "services"]
+  verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: skysentinel-dashboard
+  namespace: skysentinel
+  labels:
+    app: skysentinel
+    component: dashboard
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: skysentinel-dashboard
+subjects:
+- kind: ServiceAccount
+  name: skysentinel-dashboard
+  namespace: skysentinel

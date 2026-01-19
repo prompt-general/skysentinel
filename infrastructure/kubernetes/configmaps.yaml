@@ -1,0 +1,156 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: skysentinel-config
+  namespace: skysentinel
+  labels:
+    app: skysentinel
+    component: configuration
+data:
+  aws_accounts: |
+    [
+      {
+        "account_id": "123456789012",
+        "region": "us-east-1",
+        "role_arn": "arn:aws:iam::123456789012:role/SkySentinelDiscovery",
+        "name": "Production Account"
+      },
+      {
+        "account_id": "123456789013",
+        "region": "us-west-2",
+        "role_arn": "arn:aws:iam::123456789013:role/SkySentinelDiscovery",
+        "name": "Staging Account"
+      }
+    ]
+  azure_subscription_id: |
+    "12345678-1234-1234-1234-123456789012"
+  gcp_project_id: |
+    "skysentinel-production"
+  discovery_config: |
+    {
+      "services": {
+        "compute": ["ec2", "lambda", "ecs"],
+        "storage": ["s3", "ebs"],
+        "database": ["rds", "dynamodb"],
+        "network": ["vpc", "security_groups"],
+        "security": ["iam", "cloudtrail"]
+      },
+      "filters": {
+        "exclude_tags": {
+          "environment": "test"
+        },
+        "regions": ["us-east-1", "us-west-2", "eu-west-1"]
+      }
+    }
+  graph_config: |
+    {
+      "neo4j": {
+        "uri": "bolt://neo4j.skysentinel.svc.cluster.local:7687",
+        "max_connection_pool_size": 100,
+        "connection_timeout": 30
+      },
+      "temporal_versioning": true,
+      "retention_days": 90
+    }
+  logging_config: |
+    {
+      "level": "INFO",
+      "format": "json",
+      "outputs": ["stdout", "file"]
+    }
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: skysentinel-monitoring-config
+  namespace: skysentinel-monitoring
+  labels:
+    app: skysentinel
+    component: monitoring
+data:
+  prometheus.yml: |
+    global:
+      scrape_interval: 15s
+      evaluation_interval: 15s
+    
+    rule_files:
+      - "/etc/prometheus/rules/*.yml"
+    
+    scrape_configs:
+      - job_name: 'skysentinel-neo4j'
+        static_configs:
+          - targets: ['neo4j.skysentinel.svc.cluster.local:2004']
+        metrics_path: /metrics
+        scrape_interval: 30s
+      
+      - job_name: 'skysentinel-collectors'
+        kubernetes_sd_configs:
+          - role: pod
+            namespaces:
+              names:
+                - skysentinel
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_pod_label_app]
+            action: keep
+            regex: event-collector-.*
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+            action: keep
+            regex: true
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
+            action: replace
+            target_label: __metrics_path__
+          - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
+            action: replace
+            regex: ([^:]+)(?::\d+)?
+            replacement: $1:8080
+            target_label: __address__
+      
+      - job_name: 'kubernetes-pods'
+        kubernetes_sd_configs:
+          - role: pod
+        relabel_configs:
+          - action: labelmap
+            regex: __meta_kubernetes_pod_label_(.+)
+            replacement: $1
+          - action: labelmap
+            regex: __meta_kubernetes_namespace_label_(.+)
+            replacement: $1
+          - source_labels: [__meta_kubernetes_namespace]
+            action: replace
+            target_label: kubernetes_namespace
+          - source_labels: [__meta_kubernetes_pod_name]
+            action: replace
+            target_label: kubernetes_pod_name
+          - source_labels: [__meta_kubernetes_pod_container_port_number]
+            action: replace
+            target_label: kubernetes_pod_container_port_number
+          - source_labels: [__meta_kubernetes_pod_container_port_name]
+            action: replace
+            target_label: kubernetes_pod_container_port_name
+          - source_labels: [__meta_kubernetes_pod_label_app_kubernetes_io_name]
+            action: replace
+            target_label: kubernetes_name
+          - source_labels: [__meta_kubernetes_pod_label_app_kubernetes_io_component]
+            action: replace
+            target_label: kubernetes_component
+          - source_labels: [__meta_kubernetes_pod_label_app_kubernetes_io_instance]
+            action: replace
+            target_label: kubernetes_instance
+          - source_labels: [__meta_kubernetes_pod_label_app_kubernetes_io_version]
+            action: replace
+            target_label: kubernetes_version
+          - source_labels: [__meta_kubernetes_pod_label_app_kubernetes_io_part_of]
+            action: replace
+            target_label: kubernetes_part_of
+          - source_labels: [__meta_kubernetes_pod_label_app_kubernetes_io_managed_by]
+            action: replace
+            target_label: kubernetes_managed_by
+          - source_labels: [__meta_kubernetes_pod_label_app_kubernetes_io_created_by]
+            action: replace
+            target_label: kubernetes_created_by
+    
+    alerting:
+      alertmanagers:
+        - static_configs:
+            - targets:
+              - alertmanager:9093
