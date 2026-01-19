@@ -2,12 +2,12 @@
 Shared Models Module
 
 This module contains shared data models used across SkySentinel components:
-- NormalizedEvent: Standardized event format
-- ResourceInfo: Resource information model
-- PrincipalInfo: Principal/identity information model
+- NormalizedEvent: Standardized event format using Pydantic
+- ResourceReference: Resource information model
+- Principal: Principal/identity information model
 - EventCollectorConfig: Configuration model for collectors
 """
 
-from .events import NormalizedEvent, ResourceInfo, PrincipalInfo, EventCollectorConfig
+from .events import NormalizedEvent, ResourceReference, Principal, EventCollectorConfig, CloudProvider
 
-__all__ = ["NormalizedEvent", "ResourceInfo", "PrincipalInfo", "EventCollectorConfig"]
+__all__ = ["NormalizedEvent", "ResourceReference", "Principal", "EventCollectorConfig", "CloudProvider"]

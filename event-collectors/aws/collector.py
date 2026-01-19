@@ -6,7 +6,7 @@ from typing import Dict, Any, Generator, Optional
 from datetime import datetime
 from botocore.exceptions import ClientError, NoCredentialsError
 
-from shared.models.events import NormalizedEvent, PrincipalInfo, ResourceInfo
+from shared.models.events import NormalizedEvent, Principal, ResourceReference, CloudProvider
 
 
 class AWSEventCollector:
@@ -44,23 +44,19 @@ class AWSEventCollector:
             user_identity = detail.get('userIdentity', {})
             
             # Extract principal information
-            principal = PrincipalInfo(
+            principal = Principal(
                 id=user_identity.get('arn', ''),
                 type=user_identity.get('type', ''),
-                name=user_identity.get('userName', user_identity.get('principalId', '')),
-                session_context=user_identity.get('sessionContext')
+                arn=user_identity.get('arn'),
+                name=user_identity.get('userName', user_identity.get('principalId', ''))
             )
             
             # Extract resource information
             resource = self._extract_resource_info(raw_event)
             
-            # Determine event status
-            error_code = detail.get('errorCode')
-            status = "FAILED" if error_code else "SUCCESS"
-            
             return NormalizedEvent(
                 id=raw_event.get('id', ''),
-                cloud='aws',
+                cloud=CloudProvider.AWS,
                 event_type=self._determine_event_type(raw_event),
                 event_time=datetime.fromisoformat(raw_event.get('time', '').replace('Z', '+00:00')),
                 operation=detail.get('eventName', ''),
@@ -70,8 +66,6 @@ class AWSEventCollector:
                 response_elements=detail.get('responseElements', {}),
                 source_ip=detail.get('sourceIPAddress'),
                 user_agent=detail.get('userAgent'),
-                error=error_code,
-                status=status,
                 raw_event=raw_event
             )
         except Exception as e:
@@ -229,7 +223,7 @@ class AWSEventCollector:
         # Default to API call type
         return 'API_CALL'
     
-    def _extract_resource_info(self, event: Dict) -> ResourceInfo:
+    def _extract_resource_info(self, event: Dict) -> ResourceReference:
         """Extract resource information from AWS event"""
         detail = event.get('detail', {})
         
@@ -269,29 +263,30 @@ class AWSEventCollector:
                 return self._parse_arn(arn)
         
         # Fallback to minimal resource info
-        return ResourceInfo(
+        return ResourceReference(
             id='',
             type=event_source.replace('.amazonaws.com', ''),
             region=self.config.get('region'),
             account=self._get_account_id()
         )
     
-    def _parse_arn(self, arn: str) -> ResourceInfo:
-        """Parse AWS ARN into ResourceInfo"""
+    def _parse_arn(self, arn: str) -> ResourceReference:
+        """Parse AWS ARN into ResourceReference"""
         try:
             parts = arn.split(':')
             if len(parts) >= 6:
                 resource_type = parts[5].split('/')[0]
-                return ResourceInfo(
+                return ResourceReference(
                     id=arn,
                     type=f"aws:{parts[2]}:{resource_type}",
                     region=parts[3] if parts[3] != '' else None,
-                    account=parts[4] if parts[4] != '' else None
+                    account=parts[4] if parts[4] != '' else None,
+                    name=parts[5].split('/')[-1] if '/' in parts[5] else None
                 )
         except Exception as e:
             self.logger.warning(f"Failed to parse ARN {arn}: {e}")
         
-        return ResourceInfo(id=arn, type='unknown')
+        return ResourceReference(id=arn, type='unknown')
     
     def _get_account_id(self) -> str:
         """Get AWS account ID"""
