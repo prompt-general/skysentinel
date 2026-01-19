@@ -1,0 +1,154 @@
+# AWS Resource Discovery Configuration
+
+# AWS Account Settings
+aws:
+  account_id: "${AWS_ACCOUNT_ID}"
+  region: "${AWS_DEFAULT_REGION:us-east-1}"
+  
+  # Cross-account discovery
+  role_arn: "${AWS_DISCOVERY_ROLE_ARN:}"  # Optional, for cross-account access
+  
+  # Credentials
+  credentials:
+    access_key_id: "${AWS_ACCESS_KEY_ID:}"
+    secret_access_key: "${AWS_SECRET_ACCESS_KEY:}"
+    session_token: "${AWS_SESSION_TOKEN:}"  # Optional, for temporary credentials
+
+# Discovery Settings
+discovery:
+  # Services to discover
+  services:
+    compute:
+      ec2: true
+      lambda: true
+      ecs: true
+    storage:
+      s3: true
+      ebs: true
+    database:
+      rds: true
+      dynamodb: true
+    network:
+      vpc: true
+      subnets: true
+      security_groups: true
+      load_balancers: true
+    security:
+      iam: true
+      cloudtrail: true
+      guardduty: true
+  
+  # Discovery options
+  include_deleted_resources: false
+  max_concurrent_requests: 10
+  request_timeout: 30
+  retry_attempts: 3
+  retry_delay: 2  # seconds
+  
+  # Pagination
+  page_size: 100
+  max_pages: null  # No limit
+  
+  # Filtering
+  filters:
+    regions: ["us-east-1", "us-west-2", "eu-west-1"]
+    exclude_tags:
+      environment: "test"
+      owner: "skysentinel-system"
+    include_only_tagged: false
+    resource_states: ["ACTIVE", "AVAILABLE", "RUNNING"]
+
+# Graph Population
+graph_population:
+  # Batch processing
+  batch_size: 1000
+  batch_timeout: 300  # seconds
+  
+  # Relationship creation
+  create_relationships: true
+  max_relationship_depth: 3
+  
+  # Temporal settings
+  enable_temporal_versioning: true
+  retention_days: 90
+  
+  # Account structure
+  create_account_nodes: true
+  create_organizational_structure: true
+
+# Performance Optimization
+performance:
+  # Caching
+  enable_resource_cache: true
+  cache_ttl: 3600  # seconds
+  cache_size: 10000
+  
+  # Parallel processing
+  max_workers: 5
+  chunk_size: 100
+  
+  # Memory management
+  memory_limit_mb: 2048
+  gc_interval: 1000  # items
+
+# Logging and Monitoring
+logging:
+  level: "INFO"
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  file: "/var/log/skysentinel/aws-discovery.log"
+  max_file_size: "100MB"
+  backup_count: 5
+  
+  # Progress logging
+  log_progress_interval: 100  # items
+  log_slow_operations: true
+  slow_operation_threshold: 5000  # milliseconds
+
+# Error Handling
+error_handling:
+  continue_on_error: true
+  max_error_rate: 0.1  # 10% error rate threshold
+  error quarantine_file: "/var/log/skysentinel/discovery-errors.json"
+  
+  # Retry configuration
+  exponential_backoff: true
+  max_backoff_delay: 60  # seconds
+  jitter: true
+
+# Security Settings
+security:
+  # Assume role settings
+  role_session_name: "SkySentinelDiscovery"
+  role_duration: 3600  # seconds
+  
+  # Access validation
+  validate_permissions: true
+  required_permissions:
+    - "ec2:DescribeInstances"
+    - "ec2:DescribeVolumes"
+    - "ec2:DescribeSecurityGroups"
+    - "ec2:DescribeVpcs"
+    - "s3:ListAllMyBuckets"
+    - "s3:GetBucketLocation"
+    - "iam:ListUsers"
+    - "iam:ListRoles"
+    - "iam:ListPolicies"
+    - "rds:DescribeDBInstances"
+    - "lambda:ListFunctions"
+
+# Output Settings
+output:
+  # Export formats
+  formats: ["graph", "json", "csv"]
+  
+  # File output
+  output_directory: "/tmp/skysentinel-discovery"
+  compress_output: true
+  
+  # Statistics
+  generate_statistics: true
+  statistics_format: "json"
+  
+  # Validation
+  validate_output: true
+  schema_validation: true
