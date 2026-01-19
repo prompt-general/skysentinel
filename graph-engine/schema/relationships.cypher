@@ -2,40 +2,38 @@
 // Defines connections between entities with temporal tracking
 
 // Account to Resource relationships
-MATCH (a:Account {id: "arn:aws:iam::123456789012:root"})
+MATCH (a:Account {account_id: "123456789012"})
 MATCH (r:Resource {id: "arn:aws:s3:::my-bucket"})
-CREATE (a)-[:OWNS {
-  created_at: timestamp(),
-  valid_from: timestamp(),
-  valid_to: null,
-  relationship_type: "ownership"
+MERGE (a)-[:OWNS {
+  valid_from: r.created_at,
+  valid_to: null
 }]->(r);
 
 // Identity to Resource relationships (permissions)
 MATCH (i:Identity {id: "arn:aws:iam::123456789012:user/alice"})
 MATCH (r:Resource {id: "arn:aws:s3:::my-bucket"})
-CREATE (i)-[:CAN_ACCESS {
+MERGE (i)-[:CAN_ACCESS {
   permission: "s3:*",
-  granted_at: timestamp(),
-  granted_by: "arn:aws:iam::123456789012:role/admin",
   valid_from: timestamp(),
-  valid_to: null,
-  access_type: "direct"
+  valid_to: null
 }]->(r);
+
+// Resource connectivity
+MATCH (ec2:Resource {type: "aws:ec2:instance"})
+MATCH (sg:Resource {type: "aws:ec2:security-group"})
+MERGE (ec2)-[:CONNECTED_TO {
+  via: "security-group",
+  direction: "bidirectional",
+  valid_from: timestamp(),
+  valid_to: null
+}]->(sg);
 
 // Event relationships
 MATCH (e:Event {id: "event-123"})
 MATCH (i:Identity {id: "arn:aws:iam::123456789012:user/alice"})
 MATCH (r:Resource {id: "arn:aws:s3:::my-bucket"})
-CREATE (i)-[:PERFORMED {
-  action: "CreateBucket",
-  timestamp: timestamp(),
-  result: "SUCCESS"
-}]->(e);
-CREATE (e)-[:TARGETED {
-  resource_type: "aws:s3:bucket",
-  impact: "CREATION"
-}]->(r);
+MERGE (e)-[:PERFORMED_BY]->(i)
+MERGE (e)-[:AFFECTED]->(r);
 
 // Policy to Resource relationships
 MATCH (p:Policy {id: "policy-s3-encryption"})
