@@ -1,0 +1,105 @@
+# Policy: Unused Resources Cleanup
+# Identifies and cleans up unused resources to reduce costs
+
+policy:
+  name: unused-resources-cleanup
+  description: Identify and clean up unused resources to reduce costs
+  version: "1.0"
+  severity: medium
+  
+  resources:
+    cloud: aws
+    resource_types:
+      - aws:ec2:instance
+      - aws:rds:dbinstance
+      - aws:elasticache:cluster
+      - aws:eks:cluster
+      - aws:lambda:function
+    exclude_resource_types:
+      - aws:ec2:instance:bare-metal
+    tags:
+      env: "dev|test|staging"
+  
+  condition:
+    all:
+      - any:
+          - field:
+              field: "metrics.cpu_utilization_avg"
+              operator: "lt"
+              value: 5
+              timeframe: "30d"
+          - field:
+              field: "metrics.cpu_utilization_maximum"
+              operator: "lt"
+              value: 10
+              timeframe: "30d"
+      - field:
+          field: "metrics.network_in_avg"
+          operator: "lt"
+          value: 1000000  # 1MB
+          timeframe: "30d"
+      - field:
+          field: "metrics.network_out_avg"
+          operator: "lt"
+          value: 1000000  # 1MB
+          timeframe: "30d"
+      - field:
+          field: "state"
+          operator: "eq"
+          value: "running"
+      - not:
+          field:
+            field: "tags.permanent"
+            operator: "exists"
+            value: true
+      - not:
+          field:
+            field: "tags.exclude_from_cleanup"
+            operator: "exists"
+            value: true
+  
+  enforcement:
+    scheduled:
+      mode: post-event
+      dry_run: true
+      schedule: "0 2 * * *"  # Daily at 2 AM UTC
+      timeout: 300
+    runtime:
+      mode: audit-only
+      dry_run: true
+  
+  actions:
+    - type: notify
+      parameters:
+        channels:
+          - type: webhook
+            target: "https://chat.company.com/webhook/cost-alerts"
+            template: "unused-resource-alert"
+          - type: email
+            target: "finance-team@company.com"
+            template: "cost-optimization"
+        message: "Unused resource detected: {resource_id} - Potential savings: ${estimated_savings}"
+    - type: stop
+      parameters:
+        delay: 86400  # 24 hours delay
+        force: false
+        create_backup: true
+    - type: tag
+      parameters:
+        tags:
+          cost-optimization: "candidate"
+          cleanup-status: "pending"
+          last-activity: "low"
+          estimated-savings: "${estimated_monthly_savings}"
+
+metadata:
+  category: "Cost Optimization"
+  compliance_framework:
+    - "Internal Cost Policy"
+  tags:
+    domain: "resource-management"
+    control: "cost-control"
+    risk: "waste"
+  owner: "finops-team"
+  team: "cloud-operations"
+  review_date: "2024-12-31T23:59:59Z"

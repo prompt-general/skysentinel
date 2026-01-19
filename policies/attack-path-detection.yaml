@@ -1,0 +1,100 @@
+# Policy: Internet to Database Attack Path Detection
+# Detects potential attack paths from internet to production databases
+
+policy:
+  name: internet-to-database-attack-path
+  description: Detect potential attack paths from internet to databases
+  version: "1.0"
+  severity: high
+  
+  resources:
+    cloud: all
+    resource_types:
+      - "*:database:*"
+      - "*:rds:*"
+      - "*:sql:*"
+      - "*:postgres:*"
+      - "*:mysql:*"
+      - "*:oracle:*"
+    tags:
+      env: "prod"
+      tier: "critical"
+  
+  condition:
+    graph:
+      path:
+        from: "internet"
+        to: "resource"
+        via: ["load_balancer", "application", "security_group", "subnet"]
+        direction: "incoming"
+      where:
+        all:
+          - field:
+              field: "resource.type"
+              operator: "contains"
+              value: ":database"
+          - field:
+              field: "resource.tags.env"
+              operator: "eq"
+              value: "prod"
+          - field:
+              field: "resource.tags.tier"
+              operator: "in"
+              value: ["critical", "high"]
+      max_depth: 5
+      timeout: 30
+  
+  enforcement:
+    runtime:
+      mode: post-event
+      dry_run: false
+      timeout: 60
+    cicd:
+      mode: warn
+      dry_run: true
+  
+  actions:
+    - type: notify
+      parameters:
+        channels:
+          - type: email
+            target: "security-team@company.com"
+            template: "attack-path-alert"
+          - type: pagerduty
+            target: "security-oncall"
+            severity_threshold: high
+        message: "Attack Path Detected to Production Database"
+        delay: 0
+    - type: escalate
+      parameters:
+        escalation_rules:
+          - condition:
+              field:
+                field: "severity"
+                operator: "eq"
+                value: "critical"
+            action:
+              type: notify
+              parameters:
+                channels:
+                  - type: pagerduty
+                    target: "security-manager"
+    - type: tag
+      parameters:
+        tags:
+          security: "attack-path"
+          investigation: "required"
+          auto_remediation: "manual"
+
+metadata:
+  category: "Threat Detection"
+  compliance_framework:
+    - "NIST CSF"
+    - "MITRE ATT&CK"
+  tags:
+    domain: "network-security"
+    control: "attack-path-analysis"
+    risk: "lateral-movement"
+  owner: "security-operations"
+  team: "soc"
+  review_date: "2024-12-31T23:59:59Z"

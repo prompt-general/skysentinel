@@ -1,0 +1,88 @@
+# Policy: No Public Storage with Sensitive Data
+# Prevents public access to storage resources containing sensitive data
+
+policy:
+  name: no-public-critical-storage
+  description: Prevent public access to storage containing sensitive data
+  version: "1.0"
+  severity: critical
+  
+  resources:
+    cloud: all
+    resource_types:
+      - aws:s3:bucket
+      - azure:blob:container
+      - gcp:gcs:bucket
+    tags:
+      classification: "pii|confidential|restricted"
+  
+  condition:
+    all:
+      - any:
+          - field:
+              field: "acl.public"
+              operator: "eq"
+              value: true
+          - field:
+              field: "policy.public"
+              operator: "exists"
+              value: true
+          - field:
+              field: "public_read"
+              operator: "eq"
+              value: true
+          - field:
+              field: "public_write"
+              operator: "eq"
+              value: true
+      - not:
+          field:
+            field: "tags.exclude_from_policy"
+            operator: "exists"
+            value: true
+  
+  enforcement:
+    runtime:
+      mode: inline-deny
+      dry_run: false
+    cicd:
+      mode: block
+      dry_run: false
+  
+  actions:
+    - type: notify
+      parameters:
+        channels:
+          - type: slack
+            target: "#security-alerts"
+            template: "public-storage-alert"
+            severity_threshold: critical
+          - type: email
+            target: "security-team@company.com"
+            severity_threshold: high
+        message: "Public storage detected with sensitive data classification"
+    - type: block
+      parameters:
+        message: "Public access to sensitive storage is not permitted"
+        provider_native: true
+    - type: tag
+      parameters:
+        tags:
+          compliance: "violation"
+          policy: "no-public-storage"
+          severity: "critical"
+          auto_remediation: "required"
+
+metadata:
+  category: "Data Security"
+  compliance_framework:
+    - "SOC 2"
+    - "ISO 27001"
+    - "GDPR"
+    - "PCI DSS"
+  tags:
+    domain: "storage"
+    control: "access-control"
+    risk: "data-exposure"
+  owner: "security-team"
+  team: "cloud-security"
