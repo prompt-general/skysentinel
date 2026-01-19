@@ -1,0 +1,113 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: redis-backup
+  namespace: skysentinel
+  labels:
+    app: redis
+    component: backup
+spec:
+  schedule: "0 2 * * *"  # Daily at 2 AM
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels:
+            app: redis-backup
+        spec:
+          restartPolicy: OnFailure
+          containers:
+          - name: redis-backup
+            image: redis:7-alpine
+            command:
+            - /bin/sh
+            - -c
+            - |
+              # Create backup directory
+              mkdir -p /backup/$(date +%Y%m%d)
+              
+              # Backup each Redis node
+              for POD in redis-0 redis-1 redis-2; do
+                echo "Backing up $POD..."
+                redis-cli -h $POD.redis -p 6379 --rdb /backup/$(date +%Y%m%d)/$POD-dump.rdb
+              done
+              
+              # Create compressed archive
+              tar -czf /backup/redis-backup-$(date +%Y%m%d).tar.gz /backup/$(date +%Y%m%d)/
+              
+              # Upload to S3 (if configured)
+              if [ -n "$AWS_S3_BUCKET" ]; then
+                aws s3 cp /backup/redis-backup-$(date +%Y%m%d).tar.gz s3://$AWS_S3_BUCKET/redis-backups/
+              fi
+              
+              # Clean up old backups (keep last 7 days)
+              find /backup -name "*.tar.gz" -mtime +7 -delete
+            env:
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: redis-credentials
+                  key: password
+            - name: AWS_S3_BUCKET
+              valueFrom:
+                configMapKeyRef:
+                  name: backup-config
+                  key: aws_s3_bucket
+            - name: AWS_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: backup-credentials
+                  key: aws_access_key_id
+            - name: AWS_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: backup-credentials
+                  key: aws_secret_access_key
+            volumeMounts:
+            - name: backup-storage
+              mountPath: /backup
+            resources:
+              requests:
+                memory: "128Mi"
+                cpu: "100m"
+              limits:
+                memory: "256Mi"
+                cpu: "200m"
+          volumes:
+          - name: backup-storage
+            persistentVolumeClaim:
+              claimName: redis-backup-pvc
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: redis-backup-pvc
+  namespace: skysentinel
+  labels:
+    app: redis
+    component: backup
+spec:
+  accessModes:
+  - ReadWriteOnce
+  storageClassName: "standard"
+  resources:
+    requests:
+      storage: 50Gi
+---
+apiVersion: v1
+kind: ServiceMonitor
+metadata:
+  name: redis-metrics
+  namespace: skysentinel
+  labels:
+    app: redis
+    component: metrics
+spec:
+  selector:
+    matchLabels:
+      app: redis
+  endpoints:
+  - port: metrics
+    interval: 30s
+    path: /metrics
+    honorLabels: true
