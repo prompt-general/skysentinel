@@ -1,0 +1,88 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: policy-engine-network-policy
+  namespace: skysentinel
+  labels:
+    app: policy-engine
+    component: security
+spec:
+  podSelector:
+    matchLabels:
+      app: policy-engine
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  # Allow traffic from within the namespace
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: skysentinel
+    ports:
+    - protocol: TCP
+      port: 8080
+    - protocol: TCP
+      port: 9090
+  # Allow traffic from monitoring systems
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: monitoring
+    ports:
+    - protocol: TCP
+      port: 9090
+  # Allow traffic from ingress controllers
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: ingress-nginx
+    ports:
+    - protocol: TCP
+      port: 8080
+  egress:
+  # Allow DNS
+  - to: []
+    ports:
+    - protocol: UDP
+      port: 53
+    - protocol: TCP
+      port: 53
+  # Allow traffic to Neo4j
+  - to:
+    - podSelector:
+        matchLabels:
+          app: neo4j
+    ports:
+    - protocol: TCP
+      port: 7687
+    - protocol: TCP
+      port: 7474
+  # Allow traffic to Redis
+  - to:
+    - podSelector:
+        matchLabels:
+          app: redis
+    ports:
+    - protocol: TCP
+      port: 6379
+  # Allow traffic to event collectors
+  - to:
+    - podSelector:
+        matchLabels:
+          app: event-collector
+    ports:
+    - protocol: TCP
+      port: 8080
+  # Allow traffic to external cloud APIs
+  - to: []
+    ports:
+    - protocol: TCP
+      port: 443
+    - protocol: TCP
+      port: 80
+  # Allow traffic to Kubernetes API
+  - to: []
+    ports:
+    - protocol: TCP
+      port: 443

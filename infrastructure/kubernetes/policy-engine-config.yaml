@@ -1,0 +1,115 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: policy-engine-config
+  namespace: skysentinel
+  labels:
+    app: policy-engine
+    component: config
+data:
+  config.yaml: |
+    # SkySentinel Policy Engine Configuration
+    
+    # Database Configuration
+    neo4j:
+      uri: "bolt://neo4j.skysentinel.svc.cluster.local:7687"
+      max_connection_lifetime: 3600
+      max_connection_pool_size: 50
+      connection_acquisition_timeout: 60
+    
+    # Redis Configuration
+    redis:
+      url: "redis://redis-master.skysentinel.svc.cluster.local:6379"
+      db: 0
+      max_connections: 20
+      socket_timeout: 5
+      socket_connect_timeout: 5
+    
+    # Policy Engine Settings
+    policy_engine:
+      mode: "production"
+      max_workers: 10
+      batch_size: 100
+      batch_timeout: 5.0
+      cache_ttl: 300
+      enable_metrics: true
+      metrics_port: 9090
+    
+    # Event Processor Configuration
+    event_processor:
+      max_workers: 20
+      batch_size: 1000
+      batch_timeout: 5.0
+      queue_size_limit: 10000
+      priority_queues:
+        - critical
+        - high
+        - medium
+        - low
+      retry_attempts: 3
+      retry_delay: 30
+    
+    # Scheduled Evaluator Configuration
+    scheduled_evaluator:
+      max_workers: 5
+      batch_size: 1000
+      enable_hourly_evaluation: true
+      enable_daily_drift_check: true
+      enable_weekly_compliance: true
+      enable_monthly_report: true
+      schedules:
+        hourly: "0 * * * *"
+        daily_drift: "0 2 * * *"
+        weekly_compliance: "0 3 * * 0"
+        monthly_report: "0 4 1 * *"
+    
+    # Cloud Provider Configuration
+    cloud_providers:
+      aws:
+        region: "us-east-1"
+        assume_role_ttl: 3600
+        max_retries: 3
+        timeout: 30
+      azure:
+        default_location: "East US"
+        max_retries: 3
+        timeout: 30
+      gcp:
+        default_region: "us-central1"
+        max_retries: 3
+        timeout: 30
+    
+    # Logging Configuration
+    logging:
+      level: "INFO"
+      format: "json"
+      enable_structured_logging: true
+      log_requests: true
+      log_errors: true
+      log_performance: true
+    
+    # Security Configuration
+    security:
+      enable_tls: true
+      cert_file: "/etc/ssl/certs/tls.crt"
+      key_file: "/etc/ssl/private/tls.key"
+      enable_auth: true
+      auth_provider: "rbac"
+    
+    # Monitoring Configuration
+    monitoring:
+      enable_prometheus: true
+      prometheus_port: 9090
+      enable_health_checks: true
+      health_check_interval: 30
+      enable_tracing: true
+      tracing_sample_rate: 0.1
+    
+    # Performance Configuration
+    performance:
+      enable_caching: true
+      cache_size: 1000
+      enable_compression: true
+      compression_level: 6
+      enable_async_processing: true
+      max_concurrent_requests: 100
