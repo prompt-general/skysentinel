@@ -8,6 +8,7 @@ from .base import (
     IaCAdapter, IaCType, IaCPlan, IaCResource, IaCDependency, 
     IaCValidationResult, ResourceType, CloudProvider
 )
+from shared.models.events import ResourceReference
 
 
 class TerraformAdapter(IaCAdapter):
@@ -90,6 +91,97 @@ class TerraformAdapter(IaCAdapter):
             'helm': CloudProvider.KUBERNETES,
         }
     
+    def parse(self, tfplan_json: Dict) -> List[ResourceReference]:
+        """Parse Terraform plan JSON and return list of ResourceReferences"""
+        resources = []
+        
+        # Terraform plan JSON structure: planned_values -> root_module -> resources
+        root_module = tfplan_json.get('planned_values', {}).get('root_module', {})
+        resources.extend(self._extract_resources_from_module(root_module))
+        
+        # Also check child modules
+        for child_module in root_module.get('child_modules', []):
+            resources.extend(self._extract_resources_from_module(child_module))
+        
+        return resources
+
+    def _extract_resources_from_module(self, module: Dict) -> List[ResourceReference]:
+        """Extract resources from a Terraform module"""
+        resources = []
+        for resource in module.get('resources', []):
+            # Skip data resources
+            if resource.get('mode', '') == 'data':
+                continue
+                
+            normalized = self.normalize_resource(resource)
+            if normalized:
+                resources.append(normalized)
+        return resources
+
+    def normalize_resource(self, tf_resource: Dict) -> Optional[ResourceReference]:
+        """Normalize a Terraform resource to our model."""
+        resource_type = tf_resource.get('type', '')
+        resource_name = tf_resource.get('name', '')
+        resource_values = tf_resource.get('values', {})
+        
+        # Generate a unique ID for resource (using Terraform's address)
+        address = tf_resource.get('address', '')
+        
+        # Map Terraform resource type to our resource type
+        # Example: aws_s3_bucket -> aws:s3:bucket
+        cloud, service, resource = self._parse_terraform_type(resource_type)
+        
+        if not cloud:
+            return None
+        
+        # Construct an ARN-like ID (we don't have actual ARN until creation, so we use a placeholder)
+        # For IaC, we use Terraform address as ID because it's unique within the plan.
+        resource_id = f"terraform:{address}"
+        
+        # Extract tags if present
+        tags = resource_values.get('tags', {})
+        
+        # Determine region (if available)
+        region = resource_values.get('region', '')
+        
+        return ResourceReference(
+            id=resource_id,
+            type=f"{cloud}:{service}:{resource}",
+            region=region,
+            account=self._extract_account(resource_values),
+            name=resource_name,
+            tags=tags,
+            properties=resource_values,
+            metadata={
+                'iac_type': 'terraform',
+                'terraform_address': address,
+                'terraform_type': resource_type,
+                'terraform_name': resource_name,
+                'mode': tf_resource.get('mode', 'managed'),
+                'provider_name': tf_resource.get('provider_name', ''),
+                'values': resource_values
+            }
+        )
+    
+    def _parse_terraform_type(self, tf_type: str) -> tuple:
+        """Parse Terraform resource type to (cloud, service, resource)."""
+        # Example: aws_s3_bucket -> (aws, s3, bucket)
+        parts = tf_type.split('_')
+        if len(parts) < 2:
+            return (None, None, None)
+        
+        cloud = parts[0]
+        service = parts[1]
+        resource = '_'.join(parts[2:]) if len(parts) > 2 else ''
+        
+        return (cloud, service, resource)
+    
+    def _extract_account(self, values: Dict) -> Optional[str]:
+        """Extract account ID from Terraform values (if available)."""
+        # This might be in provider config or resource values
+        # For AWS, we might have an 'account_id' attribute or it might be in the provider
+        return values.get('account_id')
+    
     def parse_plan(self, plan_content: Union[str, Dict]) -> IaCPlan:
         """Parse Terraform plan JSON output"""
         if isinstance(plan_content, str):
@@ -160,51 +252,6 @@ class TerraformAdapter(IaCAdapter):
             return plan
         else:
             return self.parse_plan(config_content)
-    
-    def normalize_resource(self, raw_resource: Dict) -> IaCResource:
-        """Normalize Terraform resource to unified model"""
-        resource_type = raw_resource.get('type', '')
-        resource_name = raw_resource.get('name', '')
-        mode = raw_resource.get('mode', 'managed')
-        
-        # Extract provider from resource type
-        provider = self._extract_cloud_provider(raw_resource)
-        
-        # Create resource ID
-        resource_id = f"{resource_type}.{resource_name}"
-        
-        # Extract properties
-        values = raw_resource.get('values', {})
-        if mode == 'data':
-            values = raw_resource.get('values', {})
-        
-        # Extract change type
-        change_actions = raw_resource.get('change', {}).get('actions', [])
-        if 'create' in change_actions:
-            change_type = 'create'
-        elif 'delete' in change_actions:
-            change_type = 'delete'
-        elif 'update' in change_actions:
-            change_type = 'update'
-        else:
-            change_type = 'read'
-        
-        return IaCResource(
-            id=resource_id,
-            type=resource_type,
-            name=resource_name,
-            provider=provider,
-            resource_category=self._normalize_resource_type(resource_type),
-            properties=self._sanitize_properties(values),
-            change_type=change_type,
-            metadata={
-                'mode': mode,
-                'address': raw_resource.get('address', ''),
-                'index': raw_resource.get('index'),
-                'provider_name': raw_resource.get('provider_name', ''),
-                'change_actions': change_actions
-            }
-        )
     
     def extract_dependencies(self, iac_content: Dict) -> List[IaCDependency]:
         """Extract dependencies from Terraform plan"""
@@ -303,7 +350,9 @@ class TerraformAdapter(IaCAdapter):
         """Parse resource from planned values section"""
         try:
             resource = self.normalize_resource(resource_data)
-            return resource
+            if resource:
+                return self._to_iac_resource(resource)
+            return None
         except Exception as e:
             self.logger.warning(f"Failed to parse resource from planned values: {e}")
             return None
@@ -413,6 +462,19 @@ class TerraformAdapter(IaCAdapter):
             return CloudProvider.KUBERNETES
         
         return CloudProvider.AWS
+    
+    def _to_iac_resource(self, resource_ref: ResourceReference) -> IaCResource:
+        """Convert ResourceReference to IaCResource"""
+        return IaCResource(
+            id=resource_ref.id,
+            type=resource_ref.type,
+            name=resource_ref.name,
+            provider=self._extract_cloud_provider({'type': resource_ref.type}),
+            resource_category=self._normalize_resource_type(resource_ref.type),
+            properties=resource_ref.properties,
+            metadata=resource_ref.metadata,
+            change_type=resource_ref.metadata.get('change_type', 'create')
+        )
 
 
 # Register the adapter
