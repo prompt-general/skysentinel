@@ -1,0 +1,287 @@
+# SkySentinel CI/CD GitHub Actions Integration
+# This file demonstrates how to integrate SkySentinel CI/CD service into GitHub Actions
+
+name: SkySentinel Security Check
+
+on:
+  pull_request:
+    branches: [ main, develop ]
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  skysentinel-security-check:
+    runs-on: ubuntu-latest
+    name: SkySentinel Security Evaluation
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    
+    - name: Setup Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+    
+    - name: Install dependencies
+      run: |
+        pip install -r requirements.txt
+        pip install -r cicd/requirements.txt
+    
+    - name: Setup Terraform
+      uses: hashicorp/setup-terraform@v3
+      with:
+        terraform_version: "1.5.*"
+      if: contains(github.event.head_commit.modified, '.tf') || contains(github.event.head_commit.modified, 'terraform')
+    
+    - name: Setup AWS CLI
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: us-east-1
+      if: contains(github.event.head_commit.modified, '.tf') || contains(github.event.head_commit.modified, 'terraform')
+    
+    - name: Generate Terraform Plan
+      id: terraform-plan
+      run: |
+        cd terraform/
+        terraform init -input=false
+        terraform plan -out=tfplan -input=false
+        terraform show -json tfplan > ../terraform-plan.json
+      if: contains(github.event.head_commit.modified, '.tf') || contains(github.event.head_commit.modified, 'terraform')
+      continue-on-error: true
+    
+    - name: Setup Azure CLI
+      uses: azure/login@v1
+      with:
+        creds: ${{ secrets.AZURE_CREDENTIALS }}
+      if: contains(github.event.head_commit.modified, '.json') || contains(github.event.head_commit.modified, 'arm')
+    
+    - name: Generate ARM What-If
+      id: arm-plan
+      run: |
+        az deployment group what-if \
+          --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
+          --template-file azure/template.json \
+          --parameters azure/parameters.json \
+          --output json > arm-what-if.json
+      if: contains(github.event.head_commit.modified, '.json') || contains(github.event.head_commit.modified, 'arm')
+      continue-on-error: true
+    
+    - name: Setup kubectl
+      uses: azure/setup-kubectl@v3
+      with:
+        version: 'v1.28.0'
+      if: contains(github.event.head_commit.modified, '.yaml') || contains(github.event.head_commit.modified, '.yml')
+    
+    - name: Generate Kubernetes Plan
+      id: k8s-plan
+      run: |
+        kubectl diff -f k8s/ --output=json > k8s-plan.json || true
+      if: contains(github.event.head_commit.modified, '.yaml') || contains(github.event.head_commit.modified, '.yml')
+      continue-on-error: true
+    
+    - name: Run SkySentinel Evaluation
+      id: skysentinel
+      run: |
+        python - <<EOF
+        import asyncio
+        import json
+        import os
+        from cicd.service import CICDService
+        from policy_engine.engine import PolicyEngine
+        from shared.metrics import MetricsCollector
+        
+        async def evaluate_changes():
+            # Initialize services
+            policy_engine = PolicyEngine()
+            metrics = MetricsCollector("github_actions")
+            cicd_service = CICDService(policy_engine, metrics_collector=metrics)
+            
+            # Context for evaluation
+            context = {
+                'principal': f"github-action-{os.environ.get('GITHUB_ACTOR', 'unknown')}",
+                'source_ip': 'github-action',
+                'pull_request': {
+                    'author': os.environ.get('GITHUB_ACTOR', 'unknown'),
+                    'repository': os.environ.get('GITHUB_REPOSITORY', 'unknown'),
+                    'branch': os.environ.get('GITHUB_REF_NAME', 'unknown'),
+                    'commit_sha': os.environ.get('GITHUB_SHA', 'unknown')
+                },
+                'github': {
+                    'workflow': os.environ.get('GITHUB_WORKFLOW', 'unknown'),
+                    'run_id': os.environ.get('GITHUB_RUN_ID', 'unknown'),
+                    'run_number': os.environ.get('GITHUB_RUN_NUMBER', 'unknown')
+                }
+            }
+            
+            results = []
+            
+            # Evaluate Terraform changes
+            if os.path.exists('terraform-plan.json'):
+                with open('terraform-plan.json', 'r') as f:
+                    tf_content = json.load(f)
+                
+                result = await cicd_service.evaluate_iac('terraform', tf_content, context)
+                results.append({
+                    'type': 'terraform',
+                    'file': 'terraform-plan.json',
+                    'result': result.to_dict()
+                })
+            
+            # Evaluate ARM changes
+            if os.path.exists('arm-what-if.json'):
+                with open('arm-what-if.json', 'r') as f:
+                    arm_content = json.load(f)
+                
+                result = await cicd_service.evaluate_iac('arm', arm_content, context)
+                results.append({
+                    'type': 'arm',
+                    'file': 'arm-what-if.json',
+                    'result': result.to_dict()
+                })
+            
+            # Evaluate Kubernetes changes
+            if os.path.exists('k8s-plan.json'):
+                with open('k8s-plan.json', 'r') as f:
+                    k8s_content = json.load(f)
+                
+                result = await cicd_service.evaluate_iac('kubernetes', k8s_content, context)
+                results.append({
+                    'type': 'kubernetes',
+                    'file': 'k8s-plan.json',
+                    'result': result.to_dict()
+                })
+            
+            # Generate output
+            output = {
+                'pull_request': context['pull_request'],
+                'overall_status': 'success',
+                'evaluations': results,
+                'summary': {
+                    'total_evaluations': len(results),
+                    'passed': sum(1 for r in results if r['result']['status'] == 'pass'),
+                    'blocked': sum(1 for r in results if r['result']['status'] == 'block'),
+                    'warnings': sum(1 for r in results if r['result']['status'] == 'warn'),
+                    'failed': sum(1 for r in results if r['result']['status'] == 'failure')
+                }
+            }
+            
+            # Write results to file
+            with open('skysentinel-results.json', 'w') as f:
+                json.dump(output, f, indent=2)
+            
+            # Set GitHub Actions output
+            print(f"::set-output name=results::{json.dumps(output)}")
+            
+            # Determine exit code
+            blocked_count = output['summary']['blocked']
+            failed_count = output['summary']['failed']
+            
+            if blocked_count > 0:
+                print("::error::SkySentinel blocked deployment due to critical violations")
+                exit(1)
+            elif failed_count > 0:
+                print("::warning::SkySentinel evaluation failed")
+                exit(1)
+            else:
+                print("::notice::SkySentinel evaluation passed")
+        
+        # Run the evaluation
+        asyncio.run(evaluate_changes())
+        EOF
+      env:
+        GITHUB_ACTOR: ${{ github.actor }}
+        GITHUB_REPOSITORY: ${{ github.repository }}
+        GITHUB_REF_NAME: ${{ github.ref_name }}
+        GITHUB_SHA: ${{ github.sha }}
+        GITHUB_WORKFLOW: ${{ github.workflow }}
+        GITHUB_RUN_ID: ${{ github.run_id }}
+        GITHUB_RUN_NUMBER: ${{ github.run_number }}
+    
+    - name: Upload Results
+      uses: actions/upload-artifact@v4
+      with:
+        name: skysentinel-results
+        path: skysentinel-results.json
+      if: always()
+    
+    - name: Comment PR
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const results = JSON.parse(`${{ steps.skysentinel.outputs.results }}`);
+          
+          let comment = `## 🛡️ SkySentinel Security Evaluation
+          
+          **Overall Status**: ${results.overall_status.toUpperCase()}
+          
+          **Summary**:
+          - Total Evaluations: ${results.summary.total_evaluations}
+          - ✅ Passed: ${results.summary.passed}
+          - ⚠️ Warnings: ${results.summary.warnings}
+          - 🚫 Blocked: ${results.summary.blocked}
+          - ❌ Failed: ${results.summary.failed}
+          
+          `;
+          
+          // Add detailed results for each evaluation
+          for (const evaluation of results.evaluations) {
+            comment += `
+          ### ${evaluation.type.toUpperCase()} Evaluation
+          
+          **Status**: ${evaluation.result.status}
+          **Resources Evaluated**: ${evaluation.result.resources_evaluated}
+          **Violations**: ${evaluation.result.violations.length}
+          `;
+            
+            if (evaluation.result.violations.length > 0) {
+              comment += `
+          **Violations**:
+          `;
+              for (const violation of evaluation.result.violations) {
+                comment += `- **${violation.severity.toUpperCase()}**: ${violation.message}
+          `;
+              }
+            }
+          }
+          
+          // Find existing comment
+          const { data: comments } = await github.rest.issues.listComments({
+            issue_number: context.issue.number,
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+          });
+          
+          const existingComment = comments.find(comment => 
+            comment.body.includes('🛡️ SkySentinel Security Evaluation')
+          );
+          
+          if (existingComment) {
+            // Update existing comment
+            await github.rest.issues.updateComment({
+              comment_id: existingComment.id,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: comment
+            });
+          } else {
+            // Create new comment
+            await github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: comment
+            });
+          }
+      if: github.event_name == 'pull_request' && (steps.skysentinel.outcome == 'success' || steps.skysentinel.outcome == 'failure')
+    
+    - name: Block Deployment
+      if: steps.skysentinel.outcome == 'failure' && contains(steps.skysentinel.outputs.results, '"status":"block"')
+      run: |
+        echo "::error::Deployment blocked by SkySentinel due to critical security violations"
+        exit 1

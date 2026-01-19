@@ -1,0 +1,37 @@
+# CI/CD Service Dependencies
+
+# Core dependencies
+asyncio-mqtt>=0.13.0
+aiohttp>=3.8.0
+pydantic>=2.0.0
+
+# IaC adapters (already included in main project)
+# iac-adapters will be imported from parent module
+
+# Policy engine (already included in main project)
+# policy-engine will be imported from parent module
+
+# Metrics and monitoring
+prometheus-client>=0.19.0
+structlog>=23.0.0
+
+# Web framework for API endpoints
+fastapi>=0.104.0
+uvicorn>=0.24.0
+
+# Database and caching
+redis>=5.0.0
+aioredis>=2.0.0
+
+# Utilities
+python-dateutil>=2.8.2
+pytz>=2023.3
+jinja2>=3.1.0
+
+# Development dependencies
+pytest>=7.4.0
+pytest-asyncio>=0.21.0
+pytest-cov>=4.1.0
+black>=23.0.0
+flake8>=6.0.0
+mypy>=1.5.0
