@@ -1,0 +1,66 @@
+# Graph Engine Configuration
+
+# Neo4j Database Connection
+neo4j:
+  uri: "${NEO4J_URI:bolt://localhost:7687}"
+  user: "${NEO4J_USER:neo4j}"
+  password: "${NEO4J_PASSWORD:password}"
+  database: "${NEO4J_DATABASE:neo4j}"
+
+# Connection Settings
+connection:
+  max_connection_lifetime: 3600  # seconds
+  max_connection_pool_size: 100
+  connection_timeout: 30  # seconds
+  max_transaction_retry_time: 30  # seconds
+
+# Performance Settings
+performance:
+  query_timeout: 60  # seconds
+  batch_size: 1000
+  enable_query_logging: false
+  cache_size: 10000
+
+# Graph Processing
+processing:
+  temporal_versioning: true
+  max_history_depth: 10
+  cleanup_interval: 3600  # seconds
+  retention_days: 90
+
+# Security Analysis
+analysis:
+  attack_path_max_depth: 5
+  anomaly_detection_window: 24  # hours
+  permission_analysis_enabled: true
+  dependency_analysis_enabled: true
+
+# Monitoring and Health
+monitoring:
+  health_check_interval: 300  # seconds
+  metrics_enabled: true
+  export_metrics_to_prometheus: true
+  log_slow_queries: true
+  slow_query_threshold: 1000  # milliseconds
+
+# Schema Management
+schema:
+  auto_initialize: true
+  validate_constraints: true
+  index_creation: true
+  constraint_creation: true
+
+# Logging Configuration
+logging:
+  level: "INFO"
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  file: "/var/log/skysentinel/graph-engine.log"
+  max_file_size: "100MB"
+  backup_count: 5
+
+# Security Settings
+security:
+  enable_ssl: true
+  verify_certificates: true
+  encryption_at_rest: true
+  access_control: true
