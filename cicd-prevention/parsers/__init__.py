@@ -20,10 +20,12 @@ from .base import (
 
 from .terraform import TerraformParser
 from .cloudformation import CloudFormationParser
+from .arm import ARMParser
 
 # Auto-register parsers
 IaCParserFactory.register_parser('terraform', TerraformParser)
 IaCParserFactory.register_parser('cloudformation', CloudFormationParser)
+IaCParserFactory.register_parser('arm', ARMParser)
 
 __all__ = [
     # Base classes
