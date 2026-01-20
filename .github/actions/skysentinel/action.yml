@@ -1,0 +1,83 @@
+name: 'SkySentinel Policy Check'
+description: 'Evaluate IaC policies with SkySentinel'
+author: 'SkySentinel'
+inputs:
+  api-url:
+    description: 'SkySentinel API URL'
+    required: true
+  api-key:
+    description: 'SkySentinel API Key'
+    required: true
+  iac-type:
+    description: 'Type of IaC (terraform, cloudformation, arm)'
+    required: true
+  iac-file:
+    description: 'Path to IaC file'
+    required: true
+  fail-on-warn:
+    description: 'Fail on warnings'
+    required: false
+    default: 'false'
+  timeout:
+    description: 'Evaluation timeout in seconds'
+    required: false
+    default: '300'
+
+outputs:
+  status:
+    description: 'Evaluation status (pass, warn, block, error)'
+  violations:
+    description: 'Number of violations found'
+  report-url:
+    description: 'URL to detailed report'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Setup Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+    
+    - name: Install SkySentinel CLI
+      shell: bash
+      run: |
+        pip install skysentinel-cli
+    
+    - name: Evaluate IaC
+      id: evaluate
+      shell: bash
+      run: |
+        echo "Evaluating ${{ inputs.iac-type }} file: ${{ inputs.iac-file }}"
+        
+        # Run SkySentinel evaluation
+        result=$(skysentinel evaluate \
+          --api-url "${{ inputs.api-url }}" \
+          --api-key "${{ inputs.api-key }}" \
+          --iac-type "${{ inputs.iac-type }}" \
+          --file "${{ inputs.iac-file }}" \
+          --timeout "${{ inputs.timeout }}" \
+          --output json)
+        
+        echo "$result" > evaluation_result.json
+        
+        # Extract outputs
+        status=$(jq -r '.result' evaluation_result.json)
+        violations=$(jq -r '.policy_evaluation.total_violations' evaluation_result.json)
+        report_url=$(jq -r '.report_url // empty' evaluation_result.json)
+        
+        echo "status=$status" >> $GITHUB_OUTPUT
+        echo "violations=$violations" >> $GITHUB_OUTPUT
+        echo "report-url=$report_url" >> $GITHUB_OUTPUT
+        
+        # Create job summary
+        echo "## SkySentinel Evaluation Result" >> $GITHUB_STEP_SUMMARY
+        echo "**Status:** $status" >> $GITHUB_STEP_SUMMARY
+        echo "**Violations:** $violations" >> $GITHUB_STEP_SUMMARY
+        
+        if [ "$status" = "block" ] || [ "${{ inputs.fail-on-warn }}" = "true" -a "$status" = "warn" ]; then
+          echo "❌ Evaluation failed" >> $GITHUB_STEP_SUMMARY
+          exit 1
+        else
+          echo "✅ Evaluation passed" >> $GITHUB_STEP_SUMMARY
+        fi
