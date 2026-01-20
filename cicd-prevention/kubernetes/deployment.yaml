@@ -1,0 +1,87 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: skysentinel-webhook
+  namespace: skysentinel
+  labels:
+    app: skysentinel-webhook
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: skysentinel-webhook
+  template:
+    metadata:
+      labels:
+        app: skysentinel-webhook
+    spec:
+      containers:
+      - name: webhook
+        image: skysentinel/webhook:latest
+        ports:
+        - containerPort: 8443
+        env:
+        - name: SKYSENTINEL_API_URL
+          value: "https://api.skysentinel.example.com"
+        - name: SKYSENTINEL_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: skysentinel-secrets
+              key: api-key
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "200m"
+        volumeMounts:
+        - name: tls-certs
+          mountPath: /app/tls
+          readOnly: true
+      volumes:
+      - name: tls-certs
+        secret:
+          secretName: skysentinel-webhook-tls
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: skysentinel-webhook
+  namespace: skysentinel
+spec:
+  selector:
+    app: skysentinel-webhook
+  ports:
+  - port: 443
+    targetPort: 8443
+  type: ClusterIP
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: skysentinel
+  labels:
+    name: skysentinel
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingWebhookConfiguration
+metadata:
+  name: skysentinel-webhook
+webhooks:
+- name: skysentinel.skysecurity.io
+  rules:
+  - apiGroups: ["*"]
+    apiVersions: ["*"]
+    operations: ["CREATE", "UPDATE"]
+    resources: ["deployments", "services", "configmaps", "secrets", "ingresses", "persistentvolumeclaims", "statefulsets", "daemonsets", "jobs", "cronjobs"]
+  failurePolicy: Fail
+  sideEffects: None
+  admissionReviewVersions: ["v1"]
+  clientConfig:
+    service:
+      name: skysentinel-webhook
+      namespace: skysentinel
+      path: /validate
+      port: 443
+    caBundle: ${CA_BUNDLE}
