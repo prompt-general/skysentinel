@@ -1,0 +1,94 @@
+{
+  "resource_changes": [
+    {
+      "address": "aws_s3_bucket.test_bucket",
+      "type": "aws_s3_bucket",
+      "change": {
+        "actions": ["create"],
+        "before": null,
+        "after": {
+          "bucket": "test-bucket-12345",
+          "acl": "private",
+          "tags": {
+            "Environment": "test",
+            "Team": "platform"
+          },
+          "versioning": {
+            "enabled": true
+          }
+        }
+      }
+    },
+    {
+      "address": "aws_instance.web_server",
+      "type": "aws_instance",
+      "change": {
+        "actions": ["create"],
+        "before": null,
+        "after": {
+          "ami": "ami-0c55b159cbfafe1f0",
+          "instance_type": "t3.micro",
+          "vpc_security_group_ids": ["sg-12345678"],
+          "subnet_id": "subnet-12345678",
+          "tags": {
+            "Name": "web-server",
+            "Environment": "test"
+          }
+        }
+      }
+    },
+    {
+      "address": "aws_security_group.web_sg",
+      "type": "aws_security_group",
+      "change": {
+        "actions": ["create"],
+        "before": null,
+        "after": {
+          "name": "web-sg",
+          "description": "Security group for web servers",
+          "ingress": [
+            {
+              "from_port": 80,
+              "to_port": 80,
+              "protocol": "tcp",
+              "cidr_blocks": ["0.0.0.0/0"]
+            }
+          ],
+          "egress": [
+            {
+              "from_port": 0,
+              "to_port": 0,
+              "protocol": "-1",
+              "cidr_blocks": ["0.0.0.0/0"]
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration": {
+    "provider_config": {
+      "aws": {
+        "name": "aws",
+        "expressions": {
+          "region": {
+            "constant_value": "us-east-1"
+          }
+        }
+      }
+    }
+  },
+  "planned_values": {
+    "root_module": {
+      "resources": [
+        {
+          "address": "aws_s3_bucket.test_bucket",
+          "mode": "managed",
+          "type": "aws_s3_bucket",
+          "name": "test_bucket",
+          "provider_name": "registry.terraform.io/hashicorp/aws"
+        }
+      ]
+    }
+  }
+}

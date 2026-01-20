@@ -1,0 +1,93 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Test CloudFormation template for SkySentinel testing'
+
+Parameters:
+  Environment:
+    Type: String
+    Default: test
+    AllowedValues: [dev, test, prod]
+
+Resources:
+  S3Bucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub 'test-bucket-${AWS::StackName}'
+      AccessControl: Private
+      VersioningConfiguration:
+        Status: Enabled
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Team
+          Value: platform
+
+  EC2Instance:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: t3.micro
+      ImageId: ami-0c55b159cbfafe1f0
+      SecurityGroupIds:
+        - !Ref InstanceSecurityGroup
+      SubnetId: subnet-12345678
+      Tags:
+        - Key: Name
+          Value: web-server
+        - Key: Environment
+          Value: !Ref Environment
+
+  InstanceSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: !Sub 'web-sg-${AWS::StackName}'
+      GroupDescription: Security group for web servers
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+      SecurityGroupEgress:
+        - IpProtocol: -1
+          FromPort: 0
+          ToPort: 0
+          CidrIp: 0.0.0.0/0
+
+  ApplicationLoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Name: !Sub 'test-alb-${AWS::StackName}'
+      Scheme: internet-facing
+      Type: application
+      Subnets:
+        - subnet-12345678
+        - subnet-87654321
+      SecurityGroups:
+        - !Ref ALBSecurityGroup
+
+  ALBSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: !Sub 'alb-sg-${AWS::StackName}'
+      GroupDescription: Security group for Application Load Balancer
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+      SecurityGroupEgress:
+        - IpProtocol: -1
+          FromPort: 0
+          ToPort: 0
+          CidrIp: 0.0.0.0/0
+
+Outputs:
+  BucketName:
+    Description: Name of the S3 bucket
+    Value: !Ref S3Bucket
+    Export:
+      Name: !Sub '${AWS::StackName}-BucketName'
+
+  InstanceId:
+    Description: Instance ID of the web server
+    Value: !Ref EC2Instance
+    Export:
+      Name: !Sub '${AWS::StackName}-InstanceId'
