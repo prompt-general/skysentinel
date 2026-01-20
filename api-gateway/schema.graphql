@@ -1,0 +1,548 @@
+# SkySentinel GraphQL API Schema
+# Comprehensive schema for querying resources, policies, violations, and graph analysis
+
+# Scalars
+scalar DateTime
+scalar JSON
+scalar ID
+
+# Enums
+enum CloudProvider {
+  AWS
+  AZURE
+  GCP
+  KUBERNETES
+  MULTI_CLOUD
+}
+
+enum ResourceType {
+  COMPUTE
+  STORAGE
+  NETWORK
+  DATABASE
+  SECURITY
+  IDENTITY
+  CONTAINER
+  SERVERLESS
+  MESSAGING
+  ANALYTICS
+  AI_ML
+  MONITORING
+}
+
+enum Severity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum ViolationStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+  IGNORED
+  FALSE_POSITIVE
+}
+
+enum PolicyStatus {
+  ENABLED
+  DISABLED
+  DRAFT
+  ARCHIVED
+}
+
+enum ComplianceStatus {
+  COMPLIANT
+  NON_COMPLIANT
+  PENDING
+  UNKNOWN
+}
+
+enum RemediationStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  FAILED
+}
+
+# Input Types
+input TagFilter {
+  key: String!
+  value: String
+  operator: String = "EQUALS"  # EQUALS, NOT_EQUALS, CONTAINS, NOT_CONTAINS
+}
+
+input ResourceFilter {
+  type: ResourceType
+  cloud: CloudProvider
+  region: String
+  account: String
+  tags: [TagFilter!]
+  createdAfter: DateTime
+  createdBefore: DateTime
+}
+
+input ViolationFilter {
+  severity: Severity
+  status: ViolationStatus
+  resourceId: ID
+  policyId: ID
+  cloud: CloudProvider
+  from: DateTime
+  to: DateTime
+  assignee: String
+}
+
+input PolicyInput {
+  name: String!
+  description: String
+  category: String
+  severity: Severity!
+  status: PolicyStatus = ENABLED
+  conditions: JSON!
+  actions: JSON!
+  metadata: JSON
+  tags: [String!]
+}
+
+input RemediationAction {
+  type: String!  # AUTOMATED, MANUAL, IGNORE
+  config: JSON!
+  schedule: String  # IMMEDIATE, SCHEDULED
+}
+
+# Core Types
+type Resource {
+  id: ID!
+  type: String!
+  name: String!
+  cloud: CloudProvider!
+  region: String
+  account: String
+  tags: [Tag!]!
+  properties: JSON!
+  metadata: JSON!
+  createdAt: DateTime!
+  updatedAt: DateTime!
+  
+  # Relationships
+  violations: [Violation!]!
+  dependencies: [Resource!]!
+  dependents: [Resource!]!
+  compliance: ComplianceInfo!
+}
+
+type Tag {
+  key: String!
+  value: String!
+}
+
+type Policy {
+  id: ID!
+  name: String!
+  description: String
+  category: String!
+  severity: Severity!
+  status: PolicyStatus!
+  conditions: JSON!
+  actions: JSON!
+  metadata: JSON!
+  tags: [String!]!
+  createdAt: DateTime!
+  updatedAt: DateTime!
+  
+  # Relationships
+  violations: [Violation!]!
+  complianceStats: PolicyComplianceStats!
+}
+
+type Violation {
+  id: ID!
+  policyId: ID!
+  resourceId: ID!
+  severity: Severity!
+  status: ViolationStatus!
+  title: String!
+  description: String!
+  recommendation: String
+  
+  # Metadata
+  detectedAt: DateTime!
+  resolvedAt: DateTime
+  assignee: String
+  notes: String
+  falsePositive: Boolean
+  riskScore: Float
+  
+  # Relationships
+  policy: Policy!
+  resource: Resource!
+  remediation: RemediationInfo
+  
+  # Evidence
+  evidence: JSON!
+  context: JSON!
+}
+
+type RemediationInfo {
+  status: RemediationStatus!
+  action: RemediationAction
+  scheduledAt: DateTime
+  completedAt: DateTime
+  result: JSON
+  error: String
+}
+
+type AttackPath {
+  id: ID!
+  source: Resource!
+  target: Resource!
+  path: [Resource!]!
+  length: Int!
+  riskScore: Float!
+  vulnerabilities: [Violation!]!
+  description: String!
+  discoveredAt: DateTime!
+}
+
+type ComplianceInfo {
+  status: ComplianceStatus!
+  score: Float!
+  lastAssessed: DateTime!
+  violations: [Violation!]!
+  policies: [Policy!]!
+}
+
+type PolicyComplianceStats {
+  totalResources: Int!
+  compliantResources: Int!
+  nonCompliantResources: Int!
+  complianceRate: Float!
+  violationsBySeverity: [SeverityCount!]!
+  lastUpdated: DateTime!
+}
+
+type SeverityCount {
+  severity: Severity!
+  count: Int!
+}
+
+type ComplianceReport {
+  id: ID!
+  generatedAt: DateTime!
+  period: Period!
+  overallScore: Float!
+  status: ComplianceStatus!
+  
+  # Breakdowns
+  summary: ComplianceSummary!
+  policyBreakdown: [PolicyCompliance!]!
+  resourceBreakdown: [ResourceCompliance!]!
+  violationBreakdown: [ViolationTrend!]!
+  
+  # Trends
+  trends: ComplianceTrends!
+  recommendations: [Recommendation!]!
+}
+
+type Period {
+  from: DateTime!
+  to: DateTime!
+}
+
+type ComplianceSummary {
+  totalPolicies: Int!
+  activePolicies: Int!
+  totalResources: Int!
+  compliantResources: Int!
+  overallComplianceRate: Float!
+  criticalViolations: Int!
+  highViolations: Int!
+}
+
+type PolicyCompliance {
+  policy: Policy!
+  complianceRate: Float!
+  violations: [Violation!]!
+  affectedResources: Int!
+}
+
+type ResourceCompliance {
+  resource: Resource!
+  complianceRate: Float!
+  violations: [Violation!]!
+  policies: [Policy!]!
+}
+
+type ViolationTrend {
+  date: DateTime!
+  total: Int!
+  critical: Int!
+  high: Int!
+  medium: Int!
+  low: Int!
+}
+
+type ComplianceTrends {
+  complianceRate: [TrendPoint!]!
+  violationCount: [TrendPoint!]!
+  riskScore: [TrendPoint!]!
+}
+
+type TrendPoint {
+  timestamp: DateTime!
+  value: Float!
+}
+
+type Recommendation {
+  id: ID!
+  type: String!  # SECURITY, COMPLIANCE, COST, PERFORMANCE
+  priority: String!  # LOW, MEDIUM, HIGH, CRITICAL
+  title: String!
+  description: String!
+  impact: String!
+  effort: String!  # LOW, MEDIUM, HIGH
+  resources: [Resource!]!
+  policies: [Policy!]!
+  createdAt: DateTime!
+}
+
+type RemediationResult {
+  id: ID!
+  status: RemediationStatus!
+  message: String!
+  details: JSON!
+  timestamp: DateTime!
+}
+
+type GraphMetrics {
+  totalNodes: Int!
+  totalEdges: Int!
+  connectedComponents: Int!
+  averageDegree: Float!
+  maxPathLength: Int!
+  clusteringCoefficient: Float!
+}
+
+type SecurityMetrics {
+  totalViolations: Int!
+  violationsBySeverity: [SeverityCount!]!
+  violationsByCloud: [CloudCount!]!
+  violationsByType: [TypeCount!]!
+  riskScore: Float!
+  attackPaths: Int!
+  exposedResources: Int!
+}
+
+type CloudCount {
+  cloud: CloudProvider!
+  count: Int!
+}
+
+type TypeCount {
+  type: ResourceType!
+  count: Int!
+}
+
+type SearchResults {
+  resources: [Resource!]!
+  policies: [Policy!]!
+  violations: [Violation!]!
+  total: Int!
+  hasMore: Boolean!
+}
+
+# Root Query Type
+type Query {
+  # Resource queries
+  resource(id: ID!): Resource
+  resources(
+    filter: ResourceFilter
+    limit: Int = 100
+    offset: Int = 0
+    sortBy: String = "name"
+    sortOrder: String = "ASC"
+  ): [Resource!]!
+  
+  # Search resources
+  searchResources(
+    query: String!
+    limit: Int = 50
+    filters: ResourceFilter
+  ): SearchResults!
+  
+  # Policy queries
+  policy(id: ID!): Policy
+  policies(
+    category: String
+    severity: Severity
+    status: PolicyStatus
+    tags: [String!]
+    limit: Int = 100
+    offset: Int = 0
+  ): [Policy!]!
+  
+  # Violation queries
+  violation(id: ID!): Violation
+  violations(
+    filter: ViolationFilter
+    limit: Int = 100
+    offset: Int = 0
+    sortBy: String = "detectedAt"
+    sortOrder: String = "DESC"
+  ): [Violation!]!
+  
+  # Graph queries
+  attackPaths(
+    from: ID!
+    to: ID
+    maxDepth: Int = 10
+    minRiskScore: Float = 0.0
+  ): [AttackPath!]!
+  
+  resourceDependencies(
+    resourceId: ID!
+    depth: Int = 3
+    direction: String = "BOTH"  # INCOMING, OUTGOING, BOTH
+  ): [Resource!]!
+  
+  graphMetrics: GraphMetrics!
+  
+  # Compliance queries
+  complianceReport(
+    policyId: ID
+    resourceId: ID
+    from: DateTime
+    to: DateTime
+  ): ComplianceReport!
+  
+  complianceSummary(
+    filters: ResourceFilter
+  ): ComplianceSummary!
+  
+  # Analytics queries
+  securityMetrics(
+    from: DateTime
+    to: DateTime
+    filters: ResourceFilter
+  ): SecurityMetrics!
+  
+  violationTrends(
+    from: DateTime
+    to: DateTime
+    granularity: String = "DAY"  # HOUR, DAY, WEEK, MONTH
+  ): [ViolationTrend!]!
+  
+  # Dashboard queries
+  dashboardStats: DashboardStats!
+  
+  # Health check
+  health: HealthStatus!
+}
+
+type DashboardStats {
+  totalResources: Int!
+  totalPolicies: Int!
+  totalViolations: Int!
+  criticalViolations: Int!
+  highViolations: Int!
+  complianceRate: Float!
+  riskScore: Float!
+  attackPaths: Int!
+  recentViolations: [Violation!]!
+  topViolatedPolicies: [Policy!]!
+  resourceDistribution: [CloudCount!]!
+}
+
+type HealthStatus {
+  status: String!
+  timestamp: DateTime!
+  services: [ServiceHealth!]!
+  version: String!
+}
+
+type ServiceHealth {
+  name: String!
+  status: String!
+  lastCheck: DateTime!
+  error: String
+}
+
+# Root Mutation Type
+type Mutation {
+  # Policy management
+  createPolicy(policy: PolicyInput!): Policy!
+  updatePolicy(id: ID!, policy: PolicyInput!): Policy!
+  deletePolicy(id: ID!): Boolean!
+  enablePolicy(id: ID!): Policy!
+  disablePolicy(id: ID!): Policy!
+  duplicatePolicy(id: ID!, name: String!): Policy!
+  
+  # Violation management
+  resolveViolation(id: ID!, notes: String): Violation!
+  ignoreViolation(id: ID!, reason: String): Violation!
+  assignViolation(id: ID!, assignee: String!): Violation!
+  markFalsePositive(id: ID!, reason: String): Violation!
+  
+  # Remediation actions
+  remediateViolation(id: ID!, action: RemediationAction!): RemediationResult!
+  scheduleRemediation(id: ID!, action: RemediationAction!, schedule: String!): RemediationResult!
+  
+  # Resource management
+  updateResourceTags(id: ID!, tags: [TagInput!]!): Resource!
+  syncResource(id: ID!): Resource!
+  
+  # Bulk operations
+  bulkResolveViolations(ids: [ID!]!, notes: String): BulkResult!
+  bulkIgnoreViolations(ids: [ID!]!, reason: String): BulkResult!
+  bulkRemediateViolations(ids: [ID!]!, action: RemediationAction!): BulkResult!
+}
+
+input TagInput {
+  key: String!
+  value: String!
+}
+
+type BulkResult {
+  total: Int!
+  successful: Int!
+  failed: Int!
+  errors: [String!]!
+}
+
+# Root Subscription Type
+type Subscription {
+  # Real-time violation updates
+  violationCreated: Violation!
+  violationUpdated: Violation!
+  violationResolved: Violation!
+  
+  # Resource updates
+  resourceCreated: Resource!
+  resourceUpdated: Resource!
+  resourceDeleted: ID!
+  
+  # Policy updates
+  policyCreated: Policy!
+  policyUpdated: Policy!
+  policyDeleted: ID!
+  
+  # Compliance updates
+  complianceChanged: ComplianceInfo!
+  
+  # Attack path updates
+  attackPathDiscovered: AttackPath!
+  
+  # System events
+  systemEvent: SystemEvent!
+}
+
+type SystemEvent {
+  id: ID!
+  type: String!
+  message: String!
+  severity: String!
+  timestamp: DateTime!
+  metadata: JSON!
+}
