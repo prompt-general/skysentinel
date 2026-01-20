@@ -1,0 +1,123 @@
+name: 'SkySentinel CI Action'
+description: 'Evaluate IaC files against SkySentinel security policies'
+author: 'SkySentinel Team'
+branding:
+  icon: 'shield'
+  color: 'blue'
+
+inputs:
+  api-url:
+    description: 'SkySentinel API URL'
+    required: true
+  api-key:
+    description: 'SkySentinel API key'
+    required: true
+  iac-type:
+    description: 'Type of IaC (terraform, cloudformation, arm, kubernetes)'
+    required: true
+  iac-file:
+    description: 'Path to IaC file to evaluate'
+    required: true
+  context:
+    description: 'Additional context for evaluation (JSON string)'
+    required: false
+    default: '{}'
+  fail-on-critical:
+    description: 'Fail the workflow on critical violations'
+    required: false
+    default: 'true'
+  fail-on-high:
+    description: 'Fail the workflow on high severity violations'
+    required: false
+    default: 'false'
+  timeout:
+    description: 'Evaluation timeout in seconds'
+    required: false
+    default: '300'
+
+outputs:
+  status:
+    description: 'Overall evaluation status (pass, warn, block, failure)'
+    value: ${{ steps.evaluation.outputs.status }}
+  violations:
+    description: 'Total number of violations found'
+    value: ${{ steps.evaluation.outputs.violations }}
+  critical-violations:
+    description: 'Number of critical violations'
+    value: ${{ steps.evaluation.outputs.critical-violations }}
+  high-violations:
+    description: 'Number of high severity violations'
+    value: ${{ steps.evaluation.outputs.high-violations }}
+  medium-violations:
+    description: 'Number of medium severity violations'
+    value: ${{ steps.evaluation.outputs.medium-violations }}
+  low-violations:
+    description: 'Number of low severity violations'
+    value: ${{ steps.evaluation.outputs.low-violations }}
+  evaluation-id:
+    description: 'SkySentinel evaluation ID'
+    value: ${{ steps.evaluation.outputs.evaluation-id }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Setup Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+
+    - name: Install dependencies
+      shell: bash
+      run: |
+        python -m pip install --upgrade pip
+        pip install requests pyyaml
+
+    - name: Run SkySentinel Evaluation
+      id: evaluation
+      shell: bash
+      run: |
+        python ${{ github.action_path }}/action.py
+
+    - name: Post PR Comment
+      if: github.event_name == 'pull_request' && hashFiles('pr-comment.txt') != ''
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const fs = require('fs');
+          
+          let comment;
+          try {
+            comment = fs.readFileSync('pr-comment.txt', 'utf8');
+          } catch (e) {
+            console.log('No comment file found');
+            return;
+          }
+          
+          // Find existing comment
+          const { data: comments } = await github.rest.issues.listComments({
+            issue_number: context.issue.number,
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+          });
+          
+          const existingComment = comments.find(c => 
+            c.body.includes('🛡️ SkySentinel Security Evaluation')
+          );
+          
+          if (existingComment) {
+            await github.rest.issues.updateComment({
+              comment_id: existingComment.id,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: comment
+            });
+            console.log('Updated existing comment');
+          } else {
+            await github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: comment
+            });
+            console.log('Created new comment');
+          }
