@@ -1,0 +1,61 @@
+stages:
+  - test
+  - security
+
+variables:
+  SKYSENTINEL_API_URL: "https://api.skysentinel.example.com"
+  TF_PLAN_FILE: "tfplan.json"
+
+terraform_plan:
+  stage: test
+  image: hashicorp/terraform:1.5.0
+  script:
+    - terraform init
+    - terraform plan -out=tfplan
+    - terraform show -json tfplan > $TF_PLAN_FILE
+  artifacts:
+    paths:
+      - $TF_PLAN_FILE
+    expire_in: 1 hour
+
+skysentinel_scan:
+  stage: security
+  image: python:3.9-slim
+  dependencies:
+    - terraform_plan
+  before_script:
+    - pip install skysentinel-cli
+  script:
+    - |
+      echo "Running SkySentinel policy evaluation..."
+      
+      # Submit for evaluation
+      response=$(skysentinel evaluate \
+        --api-url "$SKYSENTINEL_API_URL" \
+        --api-key "$SKYSENTINEL_API_KEY" \
+        --iac-type terraform \
+        --file "$TF_PLAN_FILE" \
+        --context "{\"pipeline\": \"$CI_PIPELINE_ID\", \"job\": \"$CI_JOB_ID\"}" \
+        --output json)
+      
+      echo "$response" > evaluation_result.json
+      
+      # Check result
+      status=$(echo "$response" | jq -r '.result')
+      violations=$(echo "$response" | jq -r '.policy_evaluation.total_violations')
+      
+      if [ "$status" = "block" ]; then
+        echo "❌ Policy evaluation blocked deployment"
+        echo "Violations found: $violations"
+        exit 1
+      elif [ "$status" = "warn" ]; then
+        echo "⚠️  Policy warnings found: $violations"
+        # Continue with warnings
+      else
+        echo "✅ Policy evaluation passed"
+      fi
+  artifacts:
+    paths:
+      - evaluation_result.json
+    reports:
+      sky_sentinel: evaluation_result.json
