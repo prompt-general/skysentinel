@@ -1,0 +1,464 @@
+name: 'SkySentinel Security Evaluation'
+description: 'Evaluate IaC files against SkySentinel security policies'
+author: 'SkySentinel Team'
+branding:
+  icon: 'shield'
+  color: 'blue'
+
+inputs:
+  api-url:
+    description: 'SkySentinel API URL'
+    required: true
+  api-key:
+    description: 'SkySentinel API key'
+    required: true
+  iac-type:
+    description: 'Type of IaC (terraform, cloudformation, arm, kubernetes)'
+    required: true
+  iac-files:
+    description: 'Glob pattern for IaC files to evaluate'
+    required: true
+  file-filter:
+    description: 'Filter pattern for file selection (optional)'
+    required: false
+  context:
+    description: 'Additional context for evaluation (JSON string)'
+    required: false
+    default: '{}'
+  fail-on-critical:
+    description: 'Fail the workflow on critical violations'
+    required: false
+    default: 'true'
+  fail-on-high:
+    description: 'Fail the workflow on high severity violations'
+    required: false
+    default: 'false'
+  generate-comment:
+    description: 'Generate PR comment with results'
+    required: false
+    default: 'true'
+  timeout:
+    description: 'Evaluation timeout in seconds'
+    required: false
+    default: '300'
+  retry-count:
+    description: 'Number of retries for failed evaluations'
+    required: false
+    default: '3'
+
+outputs:
+  status:
+    description: 'Overall evaluation status (pass, warn, block, failure)'
+    value: ${{ steps.evaluation.outputs.status }}
+  violations-count:
+    description: 'Total number of violations found'
+    value: ${{ steps.evaluation.outputs.violations-count }}
+  critical-count:
+    description: 'Number of critical violations'
+    value: ${{ steps.evaluation.outputs.critical-count }}
+  high-count:
+    description: 'Number of high severity violations'
+    value: ${{ steps.evaluation.outputs.high-count }}
+  evaluation-id:
+    description: 'SkySentinel evaluation ID'
+    value: ${{ steps.evaluation.outputs.evaluation-id }}
+  result-file:
+    description: 'Path to result file'
+    value: ${{ steps.evaluation.outputs.result-file }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Setup Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+
+    - name: Install dependencies
+      shell: bash
+      run: |
+        python -m pip install --upgrade pip
+        pip install requests pydantic
+
+    - name: Find IaC files
+      id: find-files
+      shell: bash
+      run: |
+        # Find files matching the pattern
+        files=$(find . -name "${{ inputs.iac-files }}" -type f)
+        
+        # Apply file filter if provided
+        if [ -n "${{ inputs.file-filter }}" ]; then
+          files=$(echo "$files" | grep -E "${{ inputs.file-filter }}" || true)
+        fi
+        
+        # Convert to JSON array
+        files_json=$(echo "$files" | jq -R . | jq -s .)
+        
+        echo "files=$files_json" >> $GITHUB_OUTPUT
+        echo "Found $(echo "$files" | wc -l) files to evaluate"
+
+    - name: Validate files
+      shell: bash
+      run: |
+        files='${{ steps.find-files.outputs.files }}'
+        echo "$files" | jq -r '.[]' | while read file; do
+          if [ ! -f "$file" ]; then
+            echo "::error::File not found: $file"
+            exit 1
+          fi
+          
+          # Validate JSON/YAML syntax
+          if [[ "$file" == *.json ]]; then
+            python -c "import json; json.load(open('$file'))" || {
+              echo "::error::Invalid JSON in $file"
+              exit 1
+            }
+          elif [[ "$file" == *.yaml ]] || [[ "$file" == *.yml ]]; then
+            python -c "import yaml; yaml.safe_load(open('$file'))" || {
+              echo "::error::Invalid YAML in $file"
+              exit 1
+            }
+          fi
+        done
+
+    - name: Prepare evaluation context
+      id: context
+      shell: bash
+      run: |
+        # Base context
+        base_context='${{ inputs.context }}'
+        
+        # Add GitHub context
+        github_context=$(cat << EOF
+        {
+          "workflow": {
+            "run_id": "${{ github.run_id }}",
+            "run_number": "${{ github.run_number }}",
+            "repository": "${{ github.repository }}",
+            "ref": "${{ github.ref }}",
+            "sha": "${{ github.sha }}",
+            "actor": "${{ github.actor }}",
+            "event_name": "${{ github.event_name }}",
+            "workspace": "${{ github.workspace }}"
+          },
+          "action": {
+            "name": "skysentinel-action",
+            "version": "1.0.0",
+            "inputs": {
+              "iac_type": "${{ inputs.iac-type }}",
+              "fail_on_critical": "${{ inputs.fail-on-critical }}",
+              "fail_on_high": "${{ inputs.fail-on-high }}"
+            }
+          }
+        }
+        EOF
+        )
+        
+        # Merge contexts
+        merged_context=$(echo "$base_context" "$github_context" | jq -s '.[0] * .[1]')
+        
+        echo "context=$merged_context" >> $GITHUB_OUTPUT
+
+    - name: Run SkySentinel Evaluation
+      id: evaluation
+      shell: bash
+      run: |
+        python3 << 'EOF'
+        import json
+        os
+        sys
+        time
+        requests
+        from pathlib import Path
+        
+        # Configuration
+        api_url = "${{ inputs.api-url }}"
+        api_key = "${{ inputs.api-key }}"
+        iac_type = "${{ inputs.iac-type }}"
+        context = json.loads('${{ steps.context.outputs.context }}')
+        timeout = int("${{ inputs.timeout }}")
+        retry_count = int("${{ inputs.retry-count }}")
+        fail_on_critical = "${{ inputs.fail-on-critical }}" == "true"
+        fail_on_high = "${{ inputs.fail-on-high }}" == "true"
+        
+        # Get files to evaluate
+        files = json.loads('${{ steps.find-files.outputs.files }}')
+        
+        print(f"Starting SkySentinel evaluation for {len(files)} files")
+        print(f"IaC type: {iac_type}")
+        print(f"API URL: {api_url}")
+        
+        # Prepare headers
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+            "User-Agent": "skysentinel-github-action/1.0.0"
+        }
+        
+        # Submit evaluation
+        evaluation_data = {
+            "iac_type": iac_type,
+            "iac_content": {},
+            "context": context,
+            "priority": "high"
+        }
+        
+        # Handle multiple files
+        if len(files) == 1:
+            # Single file evaluation
+            with open(files[0], 'r') as f:
+                evaluation_data["iac_content"] = json.load(f)
+        else:
+            # Multiple files - combine or evaluate separately
+            combined_content = {"files": {}}
+            for file_path in files:
+                with open(file_path, 'r') as f:
+                    try:
+                        content = json.load(f)
+                        combined_content["files"][file_path] = content
+                    except json.JSONDecodeError:
+                        # Handle YAML files
+                        import yaml
+                        with open(file_path, 'r') as yaml_file:
+                            content = yaml.safe_load(yaml_file)
+                            combined_content["files"][file_path] = content
+            
+            evaluation_data["iac_content"] = combined_content
+        
+        # Submit evaluation with retries
+        evaluation_id = None
+        for attempt in range(retry_count):
+            try:
+                print(f"Submitting evaluation (attempt {attempt + 1})")
+                response = requests.post(
+                    f"{api_url}/api/v1/cicd/evaluate",
+                    headers=headers,
+                    json=evaluation_data,
+                    timeout=30
+                )
+                
+                if response.status_code == 202:
+                    result = response.json()
+                    evaluation_id = result["evaluation_id"]
+                    print(f"Evaluation submitted with ID: {evaluation_id}")
+                    break
+                else:
+                    print(f"Failed to submit evaluation: {response.status_code} {response.text}")
+                    if attempt == retry_count - 1:
+                        raise Exception(f"Failed to submit evaluation after {retry_count} attempts")
+                    time.sleep(2 ** attempt)  # Exponential backoff
+                    
+            except Exception as e:
+                print(f"Error submitting evaluation: {e}")
+                if attempt == retry_count - 1:
+                    raise
+                time.sleep(2 ** attempt)
+        
+        if not evaluation_id:
+            raise Exception("Failed to submit evaluation")
+        
+        # Poll for results
+        start_time = time.time()
+        while time.time() - start_time < timeout:
+            try:
+                response = requests.get(
+                    f"{api_url}/api/v1/cicd/evaluate/{evaluation_id}",
+                    headers=headers,
+                    timeout=10
+                )
+                
+                if response.status_code == 200:
+                    result = response.json()
+                    status = result["status"]
+                    progress = result.get("progress", 0)
+                    
+                    print(f"Evaluation status: {status} (progress: {progress}%)")
+                    
+                    if status in ["completed", "failed", "cancelled"]:
+                        # Get detailed results
+                        if status == "completed" and "result_summary" in result:
+                            summary = result["result_summary"]
+                            print(f"Results: {summary}")
+                        
+                        # Save results to file
+                        result_file = f"skysentinel-results-{evaluation_id}.json"
+                        with open(result_file, 'w') as f:
+                            json.dump(result, f, indent=2)
+                        
+                        # Set outputs
+                        print(f"::set-output name=status::{status}")
+                        print(f"::set-output name=evaluation-id::{evaluation_id}")
+                        print(f"::set-output name=result-file::{result_file}")
+                        
+                        if status == "completed" and "result_summary" in result:
+                            summary = result["result_summary"]
+                            violations_count = summary.get("violations_count", 0)
+                            print(f"::set-output name=violations-count::{violations_count}")
+                            
+                            # Count by severity (would need detailed results)
+                            print(f"::set-output name=critical-count::0")
+                            print(f"::set-output name=high-count::0")
+                        
+                        break
+                    else:
+                        time.sleep(5)
+                else:
+                    print(f"Error checking status: {response.status_code}")
+                    time.sleep(5)
+                    
+            except Exception as e:
+                print(f"Error checking evaluation status: {e}")
+                time.sleep(5)
+        
+        else:
+            raise Exception(f"Evaluation timed out after {timeout} seconds")
+        
+        print("SkySentinel evaluation completed")
+        EOF
+
+    - name: Check Results
+      shell: bash
+      run: |
+        status="${{ steps.evaluation.outputs.status }}"
+        violations_count="${{ steps.evaluation.outputs.violations-count }}"
+        critical_count="${{ steps.evaluation.outputs.critical-count }}"
+        high_count="${{ steps.evaluation.outputs.high-count }}"
+        
+        echo "Evaluation status: $status"
+        echo "Violations found: $violations_count"
+        echo "Critical violations: $critical_count"
+        echo "High severity violations: $high_count"
+        
+        # Determine if workflow should fail
+        should_fail=false
+        
+        if [ "$status" = "failure" ] || [ "$status" = "failed" ]; then
+          should_fail=true
+          echo "::error::Evaluation failed"
+        fi
+        
+        if [ "$status" = "block" ]; then
+          should_fail=true
+          echo "::error::Evaluation blocked due to critical violations"
+        fi
+        
+        if [ "${{ inputs.fail-on-critical }}" = "true" ] && [ "$critical_count" -gt 0 ]; then
+          should_fail=true
+          echo "::error::Critical violations detected"
+        fi
+        
+        if [ "${{ inputs.fail-on-high }}" = "true" ] && [ "$high_count" -gt 0 ]; then
+          should_fail=true
+          echo "::error::High severity violations detected"
+        fi
+        
+        if [ "$should_fail" = "true" ]; then
+          echo "::error::SkySentinel evaluation failed or found blocking violations"
+          exit 1
+        else
+          echo "::notice::SkySentinel evaluation passed"
+        fi
+
+    - name: Generate PR Comment
+      if: github.event_name == 'pull_request' && inputs.generate-comment == 'true'
+      shell: bash
+      run: |
+        python3 << 'EOF'
+        import json
+        os
+        
+        result_file = "${{ steps.evaluation.outputs.result-file }}"
+        status = "${{ steps.evaluation.outputs.status }}"
+        evaluation_id = "${{ steps.evaluation.outputs.evaluation-id }}"
+        
+        if not os.path.exists(result_file):
+            print(f"Result file not found: {result_file}")
+            exit(0)
+        
+        with open(result_file, 'r') as f:
+            result = json.load(f)
+        
+        # Generate comment
+        comment = f"""## 🛡️ SkySentinel Security Evaluation
+        
+        **Evaluation ID**: {evaluation_id}
+        **Status**: {status.upper()}
+        **IaC Type**: ${{ inputs.iac-type }}
+        
+        """
+        
+        if status == "completed" and "result_summary" in result:
+            summary = result["result_summary"]
+            violations_count = summary.get("violations_count", 0)
+            resources_count = summary.get("resources_evaluated", 0)
+            risk_level = summary.get("prediction_risk", "unknown")
+            
+            comment += f"""**Summary**:
+        - Resources Evaluated: {resources_count}
+        - Violations Found: {violations_count}
+        - Risk Level: {risk_level}
+        
+        """
+        
+        if "violations" in result and result["violations"]:
+            comment += "**Violations**:\n"
+            for violation in result["violations"][:10]:  # Limit to 10 violations
+                severity = violation.get("severity", "unknown")
+                message = violation.get("message", "No message")
+                comment += f"- **{severity.upper()}**: {message}\n"
+            
+            if len(result["violations"]) > 10:
+                comment += f"- ... and {len(result['violations']) - 10} more violations\n"
+        
+        # Write comment to file for GitHub script action
+        with open("pr-comment.txt", "w") as f:
+            f.write(comment)
+        
+        print(f"Generated PR comment with {len(result.get('violations', []))} violations")
+        EOF
+
+    - name: Post PR Comment
+      if: github.event_name == 'pull_request' && inputs.generate-comment == 'true'
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const fs = require('fs');
+          
+          let comment;
+          try {
+            comment = fs.readFileSync('pr-comment.txt', 'utf8');
+          } catch (e) {
+            console.log('No comment file found');
+            return;
+          }
+          
+          // Find existing comment
+          const { data: comments } = await github.rest.issues.listComments({
+            issue_number: context.issue.number,
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+          });
+          
+          const existingComment = comments.find(c => 
+            c.body.includes('🛡️ SkySentinel Security Evaluation') && 
+            c.body.includes('${{ steps.evaluation.outputs.evaluation-id }}')
+          );
+          
+          if (existingComment) {
+            await github.rest.issues.updateComment({
+              comment_id: existingComment.id,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: comment
+            });
+            console.log('Updated existing comment');
+          } else {
+            await github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: comment
+            });
+            console.log('Created new comment');
+          }

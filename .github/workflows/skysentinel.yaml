@@ -1,0 +1,553 @@
+name: SkySentinel Security Check
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches: [main, master, develop]
+  push:
+    branches: [main, master, develop]
+  workflow_dispatch:
+    inputs:
+      iac_type:
+        description: 'IaC type to evaluate'
+        required: true
+        default: 'terraform'
+        type: choice
+        options:
+          - terraform
+          - cloudformation
+          - arm
+          - kubernetes
+      force_run:
+        description: 'Force run even if no IaC changes detected'
+        required: false
+        default: false
+        type: boolean
+
+env:
+  SKYSENTINEL_API_URL: ${{ secrets.SKYSENTINEL_API_URL }}
+  SKYSENTINEL_API_KEY: ${{ secrets.SKYSENTINEL_API_KEY }}
+
+jobs:
+  detect-changes:
+    name: Detect IaC Changes
+    runs-on: ubuntu-latest
+    outputs:
+      terraform-changed: ${{ steps.changes.outputs.terraform-changed }}
+      cloudformation-changed: ${{ steps.changes.outputs.cloudformation-changed }}
+      arm-changed: ${{ steps.changes.outputs.arm-changed }}
+      kubernetes-changed: ${{ steps.changes.outputs.kubernetes-changed }}
+      any-changed: ${{ steps.changes.outputs.any-changed }}
+      changed-files: ${{ steps.changes.outputs.changed-files }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect IaC file changes
+        id: changes
+        run: |
+          # Detect Terraform changes
+          TERRAFORM_CHANGED=$(git diff --name-only origin/${{ github.base_ref || 'main' }}..HEAD | grep -E '\.(tf|tfvars)$' | wc -l)
+          echo "terraform-changed=$TERRAFORM_CHANGED" >> $GITHUB_OUTPUT
+          
+          # Detect CloudFormation changes
+          CF_CHANGED=$(git diff --name-only origin/${{ github.base_ref || 'main' }}..HEAD | grep -E '\.(yaml|yml|json)$' | grep -E '(cloudformation|cfn)' | wc -l)
+          echo "cloudformation-changed=$CF_CHANGED" >> $GITHUB_OUTPUT
+          
+          # Detect ARM template changes
+          ARM_CHANGED=$(git diff --name-only origin/${{ github.base_ref || 'main' }}..HEAD | grep -E '\.(json|yaml|yml)$' | grep -E '(arm|azure)' | wc -l)
+          echo "arm-changed=$ARM_CHANGED" >> $GITHUB_OUTPUT
+          
+          # Detect Kubernetes changes
+          K8S_CHANGED=$(git diff --name-only origin/${{ github.base_ref || 'main' }}..HEAD | grep -E '\.(yaml|yml)$' | grep -E '(k8s|kubernetes|deployment|service|ingress)' | wc -l)
+          echo "kubernetes-changed=$K8S_CHANGED" >> $GITHUB_OUTPUT
+          
+          # Any IaC changes
+          ANY_CHANGED=$((TERRAFORM_CHANGED + CF_CHANGED + ARM_CHANGED + K8S_CHANGED))
+          echo "any-changed=$ANY_CHANGED" >> $GITHUB_OUTPUT
+          
+          # Get changed files list
+          CHANGED_FILES=$(git diff --name-only origin/${{ github.base_ref || 'main' }}..HEAD | tr '\n' ',')
+          echo "changed-files=$CHANGED_FILES" >> $GITHUB_OUTPUT
+          
+          echo "Terraform files changed: $TERRAFORM_CHANGED"
+          echo "CloudFormation files changed: $CF_CHANGED"
+          echo "ARM files changed: $ARM_CHANGED"
+          echo "Kubernetes files changed: $K8S_CHANGED"
+          echo "Total IaC files changed: $ANY_CHANGED"
+
+  terraform-evaluation:
+    name: Terraform Security Evaluation
+    runs-on: ubuntu-latest
+    needs: detect-changes
+    if: needs.detect-changes.outputs.terraform-changed != '0' || github.event.inputs.force_run == 'true'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.5.0
+          terraform_wrapper: false
+
+      - name: Setup AWS CLI
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION || 'us-east-1' }}
+        continue-on-error: true
+
+      - name: Terraform Init
+        run: |
+          find . -name "*.tf" -type f -exec dirname {} \; | sort -u | while read dir; do
+            echo "Initializing Terraform in $dir"
+            cd "$dir"
+            if [ -f "terraform.tfvars" ]; then
+              terraform init -input=false -backend-config="key=${{ github.repository }}-${{ github.ref_name }}-${dir//\//-}.tfstate"
+            else
+              terraform init -input=false -backend-config="key=${{ github.repository }}-${{ github.ref_name }}-${dir//\//-}.tfstate"
+            fi
+            cd - > /dev/null
+          done
+
+      - name: Terraform Plan
+        run: |
+          find . -name "*.tf" -type f -exec dirname {} \; | sort -u | while read dir; do
+            echo "Planning Terraform in $dir"
+            cd "$dir"
+            
+            # Create plan file
+            plan_file="tfplan-${dir//\//-}"
+            terraform plan -out="$plan_file" -input=false
+            
+            # Convert to JSON
+            terraform show -json "$plan_file" > "${plan_file}.json"
+            
+            # Move to root for processing
+            mv "${plan_file}.json" "../${plan_file}.json"
+            cd - > /dev/null
+          done
+
+      - name: SkySentinel Terraform Evaluation
+        id: skysentinel-terraform
+        uses: ./github-actions/skysentinel-action
+        with:
+          api-url: ${{ env.SKYSENTINEL_API_URL }}
+          api-key: ${{ env.SKYSENTINEL_API_KEY }}
+          iac-type: terraform
+          iac-files: 'tfplan-*.json'
+          context: |
+            {
+              "github": {
+                "event_name": "${{ github.event_name }}",
+                "repository": "${{ github.repository }}",
+                "ref": "${{ github.ref }}",
+                "sha": "${{ github.sha }}",
+                "run_id": "${{ github.run_id }}",
+                "run_number": "${{ github.run_number }}",
+                "actor": "${{ github.actor }}",
+                "base_ref": "${{ github.base_ref }}",
+                "head_ref": "${{ github.head_ref }}"
+              },
+              "pull_request": {
+                "number": "${{ github.event.number }}",
+                "title": "${{ github.event.pull_request.title }}",
+                "author": "${{ github.event.pull_request.user.login }}",
+                "base_branch": "${{ github.event.pull_request.base.ref }}",
+                "head_branch": "${{ github.event.pull_request.head.ref }}"
+              }
+            }
+          fail-on-critical: true
+          fail-on-high: false
+          generate-comment: true
+
+      - name: Upload Terraform Results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: terraform-evaluation-results
+          path: skysentinel-results-*.json
+          retention-days: 30
+
+  cloudformation-evaluation:
+    name: CloudFormation Security Evaluation
+    runs-on: ubuntu-latest
+    needs: detect-changes
+    if: needs.detect-changes.outputs.cloudformation-changed != '0' || github.event.inputs.force_run == 'true'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup AWS CLI
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION || 'us-east-1' }}
+        continue-on-error: true
+
+      - name: Validate CloudFormation Templates
+        run: |
+          find . -name "*.yaml" -o -name "*.yml" -o -name "*.json" | grep -E "(cloudformation|cfn)" | while read file; do
+            echo "Validating CloudFormation template: $file"
+            aws cloudformation validate-template --template-body "file://$file" || echo "Validation failed for $file"
+          done
+
+      - name: SkySentinel CloudFormation Evaluation
+        id: skysentinel-cloudformation
+        uses: ./github-actions/skysentinel-action
+        with:
+          api-url: ${{ env.SKYSENTINEL_API_URL }}
+          api-key: ${{ env.SKYSENTINEL_API_KEY }}
+          iac-type: cloudformation
+          iac-files: '**/*.yaml,**/*.yml,**/*.json'
+          file-filter: 'cloudformation|cfn'
+          context: |
+            {
+              "github": {
+                "event_name": "${{ github.event_name }}",
+                "repository": "${{ github.repository }}",
+                "ref": "${{ github.ref }}",
+                "sha": "${{ github.sha }}",
+                "run_id": "${{ github.run_id }}",
+                "run_number": "${{ github.run_number }}",
+                "actor": "${{ github.actor }}"
+              },
+              "pull_request": {
+                "number": "${{ github.event.number }}",
+                "title": "${{ github.event.pull_request.title }}",
+                "author": "${{ github.event.pull_request.user.login }}"
+              }
+            }
+          fail-on-critical: true
+          generate-comment: true
+
+      - name: Upload CloudFormation Results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: cloudformation-evaluation-results
+          path: skysentinel-results-*.json
+          retention-days: 30
+
+  arm-evaluation:
+    name: Azure ARM Security Evaluation
+    runs-on: ubuntu-latest
+    needs: detect-changes
+    if: needs.detect-changes.outputs.arm-changed != '0' || github.event.inputs.force_run == 'true'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Azure CLI
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+        continue-on-error: true
+
+      - name: Validate ARM Templates
+        run: |
+          find . -name "*.json" | grep -E "(arm|azure)" | while read file; do
+            echo "Validating ARM template: $file"
+            az deployment group validate --resource-group "${{ secrets.AZURE_RESOURCE_GROUP }}" --template-file "$file" || echo "Validation failed for $file"
+          done
+
+      - name: Generate ARM What-If
+        run: |
+          find . -name "*.json" | grep -E "(arm|azure)" | while read file; do
+            echo "Generating What-If for ARM template: $file"
+            output_file="arm-what-if-$(basename $file .json).json"
+            
+            az deployment group what-if \
+              --resource-group "${{ secrets.AZURE_RESOURCE_GROUP }}" \
+              --template-file "$file" \
+              --output json > "$output_file" || echo "What-If failed for $file"
+          done
+
+      - name: SkySentinel ARM Evaluation
+        id: skysentinel-arm
+        uses: ./github-actions/skysentinel-action
+        with:
+          api-url: ${{ env.SKYSENTINEL_API_URL }}
+          api-key: ${{ env.SKYSENTINEL_API_KEY }}
+          iac-type: arm
+          iac-files: 'arm-what-if-*.json'
+          context: |
+            {
+              "github": {
+                "event_name": "${{ github.event_name }}",
+                "repository": "${{ github.repository }}",
+                "ref": "${{ github.ref }}",
+                "sha": "${{ github.sha }}",
+                "run_id": "${{ github.run_id }}",
+                "run_number": "${{ github.run_number }}",
+                "actor": "${{ github.actor }}"
+              },
+              "azure": {
+                "resource_group": "${{ secrets.AZURE_RESOURCE_GROUP }}",
+                "subscription_id": "${{ secrets.AZURE_SUBSCRIPTION_ID }}"
+              }
+            }
+          fail-on-critical: true
+          generate-comment: true
+
+      - name: Upload ARM Results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: arm-evaluation-results
+          path: skysentinel-results-*.json
+          retention-days: 30
+
+  kubernetes-evaluation:
+    name: Kubernetes Security Evaluation
+    runs-on: ubuntu-latest
+    needs: detect-changes
+    if: needs.detect-changes.outputs.kubernetes-changed != '0' || github.event.inputs.force_run == 'true'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup kubectl
+        uses: azure/setup-kubectl@v3
+        with:
+          version: 'v1.28.0'
+        continue-on-error: true
+
+      - name: Setup kubeconfig
+        run: |
+          if [ -n "${{ secrets.KUBECONFIG }}" ]; then
+            echo "${{ secrets.KUBECONFIG }}" | base64 -d > kubeconfig
+            export KUBECONFIG=$PWD/kubeconfig
+          fi
+        continue-on-error: true
+
+      - name: Validate Kubernetes manifests
+        run: |
+          find . -name "*.yaml" -o -name "*.yml" | grep -E "(k8s|kubernetes|deployment|service|ingress)" | while read file; do
+            echo "Validating Kubernetes manifest: $file"
+            kubectl validate --dry-run=client -f "$file" || echo "Validation failed for $file"
+          done
+
+      - name: Generate Kubernetes diff
+        run: |
+          find . -name "*.yaml" -o -name "*.yml" | grep -E "(k8s|kubernetes|deployment|service|ingress)" | while read file; do
+            echo "Generating diff for Kubernetes manifest: $file"
+            output_file="k8s-diff-$(basename $file .yaml).json"
+            
+            kubectl diff -f "$file" --output=json > "$output_file" || echo "Diff failed for $file"
+          done
+
+      - name: SkySentinel Kubernetes Evaluation
+        id: skysentinel-kubernetes
+        uses: ./github-actions/skysentinel-action
+        with:
+          api-url: ${{ env.SKYSENTINEL_API_URL }}
+          api-key: ${{ env.SKYSENTINEL_API_KEY }}
+          iac-type: kubernetes
+          iac-files: 'k8s-diff-*.json'
+          context: |
+            {
+              "github": {
+                "event_name": "${{ github.event_name }}",
+                "repository": "${{ github.repository }}",
+                "ref": "${{ github.ref }}",
+                "sha": "${{ github.sha }}",
+                "run_id": "${{ github.run_id }}",
+                "run_number": "${{ github.run_number }}",
+                "actor": "${{ github.actor }}"
+              },
+              "kubernetes": {
+                "cluster": "${{ secrets.K8S_CLUSTER_NAME }}",
+                "namespace": "${{ secrets.K8S_NAMESPACE || 'default' }}"
+              }
+            }
+          fail-on-critical: true
+          generate-comment: true
+
+      - name: Upload Kubernetes Results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: kubernetes-evaluation-results
+          path: skysentinel-results-*.json
+          retention-days: 30
+
+  summary-report:
+    name: Security Evaluation Summary
+    runs-on: ubuntu-latest
+    needs: [detect-changes, terraform-evaluation, cloudformation-evaluation, arm-evaluation, kubernetes-evaluation]
+    if: always()
+    steps:
+      - name: Download all results
+        uses: actions/download-artifact@v4
+        with:
+          pattern: '*-evaluation-results'
+          merge-multiple: true
+
+      - name: Generate Summary Report
+        id: summary
+        run: |
+          python3 << 'EOF'
+          import json
+          import os
+          from pathlib import Path
+          
+          # Collect all results
+          all_results = []
+          result_files = list(Path('.').glob('skysentinel-results-*.json'))
+          
+          for result_file in result_files:
+              try:
+                  with open(result_file, 'r') as f:
+                      result = json.load(f)
+                      all_results.append(result)
+              except Exception as e:
+                  print(f"Error reading {result_file}: {e}")
+          
+          # Generate summary
+          summary = {
+              'repository': '${{ github.repository }}',
+              'ref': '${{ github.ref }}',
+              'sha': '${{ github.sha }}',
+              'run_id': '${{ github.run_id }}',
+              'actor': '${{ github.actor }}',
+              'total_evaluations': len(all_results),
+              'evaluations': all_results,
+              'summary': {
+                  'passed': 0,
+                  'blocked': 0,
+                  'warnings': 0,
+                  'failed': 0
+              }
+          }
+          
+          # Count statuses
+          for result in all_results:
+              status = result.get('evaluation', {}).get('status', 'unknown')
+              if status == 'pass':
+                  summary['summary']['passed'] += 1
+              elif status == 'block':
+                  summary['summary']['blocked'] += 1
+              elif status == 'warn':
+                  summary['summary']['warnings'] += 1
+              elif status == 'failure':
+                  summary['summary']['failed'] += 1
+          
+          # Write summary
+          with open('skysentinel-summary.json', 'w') as f:
+              json.dump(summary, f, indent=2)
+          
+          # Set outputs
+          print(f"::set-output name=summary::{json.dumps(summary)}")
+          print(f"Total evaluations: {summary['total_evaluations']}")
+          print(f"Passed: {summary['summary']['passed']}")
+          print(f"Blocked: {summary['summary']['blocked']}")
+          print(f"Warnings: {summary['summary']['warnings']}")
+          print(f"Failed: {summary['summary']['failed']}")
+          EOF
+
+      - name: Create PR Comment
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const summary = JSON.parse(`${{ steps.summary.outputs.summary }}`);
+            
+            let comment = `## 🛡️ SkySentinel Security Evaluation Summary
+            
+            **Repository**: ${summary.repository}
+            **Branch**: ${summary.ref}
+            **Commit**: ${summary.sha}
+            
+            **Overall Results**:
+            - ✅ Passed: ${summary.summary.passed}
+            - ⚠️ Warnings: ${summary.summary.warnings}
+            - 🚫 Blocked: ${summary.summary.blocked}
+            - ❌ Failed: ${summary.summary.failed}
+            - 📊 Total Evaluations: ${summary.total_evaluations}
+            
+            `;
+            
+            // Add detailed results
+            for (const evaluation of summary.evaluations) {
+              comment += `
+            ### ${evaluation.iac_type?.toUpperCase() || 'UNKNOWN'} Evaluation
+            **Status**: ${evaluation.evaluation?.status || 'unknown'}
+            **Resources**: ${evaluation.evaluation?.resources_evaluated || 0}
+            **Violations**: ${evaluation.evaluation?.violations?.length || 0}
+            `;
+              
+              if (evaluation.evaluation?.violations?.length > 0) {
+                comment += `
+            **Violations**:
+            `;
+                for (const violation of evaluation.evaluation.violations) {
+                  comment += `- **${violation.severity?.toUpperCase() || 'UNKNOWN'}**: ${violation.message || 'No message'}
+            `;
+                }
+              }
+            }
+            
+            // Find and update/create comment
+            const { data: comments } = await github.rest.issues.listComments({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+            });
+            
+            const existingComment = comments.find(comment => 
+              comment.body.includes('🛡️ SkySentinel Security Evaluation Summary')
+            );
+            
+            if (existingComment) {
+              await github.rest.issues.updateComment({
+                comment_id: existingComment.id,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: comment
+              });
+            } else {
+              await github.rest.issues.createComment({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: comment
+              });
+            }
+
+      - name: Upload Summary
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: skysentinel-summary
+          path: skysentinel-summary.json
+          retention-days: 90
+
+      - name: Check Overall Status
+        run: |
+          summary='${{ steps.summary.outputs.summary }}'
+          blocked_count=$(echo "$summary" | python3 -c "import sys, json; data=json.load(sys.stdin); print(data['summary']['blocked'])")
+          failed_count=$(echo "$summary" | python3 -c "import sys, json; data=json.load(sys.stdin); print(data['summary']['failed'])")
+          
+          if [ "$blocked_count" -gt 0 ]; then
+            echo "::error::Security evaluation blocked due to critical violations"
+            exit 1
+          elif [ "$failed_count" -gt 0 ]; then
+            echo "::error::Security evaluation failed"
+            exit 1
+          else
+            echo "::notice::Security evaluation completed successfully"
+          fi
