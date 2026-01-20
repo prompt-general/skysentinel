@@ -1,0 +1,85 @@
+name: Terraform Policy Scan
+
+on:
+  pull_request:
+    paths:
+      - '**/*.tf'
+      - '**/*.tfvars'
+  push:
+    branches: [main, master]
+
+jobs:
+  skysentinel:
+    name: SkySentinel Policy Evaluation
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+      
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: 1.5.0
+      
+      - name: Terraform Init
+        run: terraform init
+      
+      - name: Terraform Plan
+        run: terraform plan -out=tfplan
+      
+      - name: Convert Terraform Plan to JSON
+        run: terraform show -json tfplan > tfplan.json
+      
+      - name: SkySentinel Evaluation
+        id: skysentinel
+        uses: ./.github/actions/skysentinel
+        with:
+          api-url: ${{ secrets.SKYSENTINEL_API_URL }}
+          api-key: ${{ secrets.SKYSENTINEL_API_KEY }}
+          iac-type: terraform
+          iac-file: tfplan.json
+          fail-on-warn: true
+      
+      - name: Post Evaluation Comment
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const fs = require('fs');
+            const result = JSON.parse(fs.readFileSync('evaluation_result.json', 'utf8'));
+            
+            let comment = `## SkySentinel Policy Evaluation\n`;
+            comment += `**Status:** ${result.result}\n`;
+            comment += `**Violations:** ${result.policy_evaluation.total_violations}\n`;
+            
+            if (result.policy_evaluation.violations_by_severity.critical) {
+              comment += `\n### Critical Violations\n`;
+              result.policy_evaluation.violations_by_severity.critical.forEach(v => {
+                comment += `- ${v.description}\n`;
+              });
+            }
+            
+            if (result.policy_evaluation.violations_by_severity.high) {
+              comment += `\n### High Severity Violations\n`;
+              result.policy_evaluation.violations_by_severity.high.forEach(v => {
+                comment += `- ${v.description}\n`;
+              });
+            }
+            
+            if (result.recommendations.length > 0) {
+              comment += `\n### Recommendations\n`;
+              result.recommendations.slice(0, 5).forEach(rec => {
+                comment += `- ${rec.message}\n`;
+              });
+            }
+            
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: comment
+            });
