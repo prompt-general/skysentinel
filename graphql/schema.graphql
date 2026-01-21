@@ -1,0 +1,900 @@
+# SkySentinel GraphQL Schema
+# Comprehensive schema for cloud security policy management
+
+scalar DateTime
+scalar JSON
+
+type Query {
+  # Overview
+  overview(tenantId: ID!): Overview
+
+  # Policies
+  policies(filter: PolicyFilter, tenantId: ID!): [Policy]
+  policy(id: ID!, tenantId: ID!): Policy
+
+  # Violations
+  violations(filter: ViolationFilter, tenantId: ID!): [Violation]
+  violation(id: ID!, tenantId: ID!): Violation
+
+  # Resources
+  resources(filter: ResourceFilter, tenantId: ID!): [Resource]
+  resource(id: ID!, tenantId: ID!): Resource
+
+  # Attack Paths
+  attackPaths(from: String, to: String, tenantId: ID!): [AttackPath]
+
+  # Evaluations (CI/CD and runtime)
+  evaluations(filter: EvaluationFilter, tenantId: ID!): [Evaluation]
+  evaluation(id: ID!, tenantId: ID!): Evaluation
+
+  # Compliance
+  compliance(tenantId: ID!, timeframe: Timeframe = LAST_30_DAYS): ComplianceReport
+
+  # ML Models
+  mlModels(tenantId: ID!): [MLModel]
+  mlModel(id: ID!, tenantId: ID!): MLModel
+
+  # Monitoring
+  monitoringDashboard(tenantId: ID!): MonitoringDashboard
+
+  # Analytics
+  analytics(tenantId: ID!, type: AnalyticsType!): Analytics
+
+  # Accounts/Tenants
+  accounts: [Account]
+  account(id: ID!): Account
+}
+
+type Mutation {
+  # Policy management
+  createPolicy(input: PolicyInput!, tenantId: ID!): Policy
+  updatePolicy(id: ID!, input: PolicyInput!, tenantId: ID!): Policy
+  deletePolicy(id: ID!, tenantId: ID!): Boolean
+  enablePolicy(id: ID!, tenantId: ID!): Policy
+  disablePolicy(id: ID!, tenantId: ID!): Policy
+
+  # Violation management
+  updateViolation(id: ID!, input: ViolationInput!, tenantId: ID!): Violation
+  resolveViolation(id: ID!, resolution: ViolationResolution!, tenantId: ID!): Violation
+  ignoreViolation(id: ID!, reason: String!, tenantId: ID!): Violation
+  reopenViolation(id: ID!, tenantId: ID!): Violation
+
+  # Resource management
+  updateResource(id: ID!, input: ResourceInput!, tenantId: ID!): Resource
+  tagResource(id: ID!, tags: [TagInput!], tenantId: ID!): Resource
+
+  # Trigger actions
+  remediateViolation(id: ID!, remediationType: RemediationType!, tenantId: ID!): RemediationResult
+  scanResources(resourceIds: [ID!], tenantId: ID!): ScanResult
+  triggerEvaluation(iacType: IaCType!, content: String!, context: JSON!, tenantId: ID!): Evaluation
+
+  # ML Model management
+  trainMLModel(tenantId: ID!, modelType: MLModelType!): TrainingJob
+  updateMLWeights(tenantId: ID!, weights: MLWeightsInput!): MLWeights
+  enableMLIntegration(tenantId: ID!, policyId: ID!): Policy
+
+  # Account management
+  createAccount(input: AccountInput!): Account
+  updateAccount(id: ID!, input: AccountInput!): Account
+  deleteAccount(id: ID!): Boolean
+}
+
+type Subscription {
+  # Real-time updates
+  violationCreated(tenantId: ID!): Violation
+  violationUpdated(tenantId: ID!): Violation
+  violationResolved(tenantId: ID!): Violation
+  resourceUpdated(tenantId: ID!): Resource
+  evaluationCompleted(tenantId: ID!): Evaluation
+  mlModelTrained(tenantId: ID!): MLModel
+  complianceUpdated(tenantId: ID!): ComplianceReport
+}
+
+# Core Types
+
+type Account {
+  id: ID!
+  name: String!
+  tenantId: String!
+  cloudProviders: [CloudProvider!]!
+  createdAt: DateTime!
+  updatedAt: DateTime!
+  settings: AccountSettings
+  subscription: Subscription
+  users: [User!]!
+}
+
+type AccountSettings {
+  alertThresholds: AlertThresholds
+  remediationSettings: RemediationSettings
+  mlSettings: MLSettings
+  notificationSettings: NotificationSettings
+}
+
+type User {
+  id: ID!
+  email: String!
+  name: String!
+  role: UserRole!
+  accountId: ID!
+  permissions: [Permission!]!
+  lastLogin: DateTime
+  createdAt: DateTime!
+}
+
+type Policy {
+  id: ID!
+  name: String!
+  description: String
+  category: PolicyCategory!
+  severity: Severity!
+  cloudProvider: CloudProvider!
+  resourceType: String!
+  enabled: Boolean!
+  mlEnhanced: Boolean!
+  mlThreshold: Float
+  mlWeight: Float
+  rules: [PolicyRule!]!
+  tags: [String!]!
+  createdAt: DateTime!
+  updatedAt: DateTime!
+  createdBy: String!
+  evaluations: [Evaluation!]!
+  violations: [Violation!]!
+}
+
+type PolicyRule {
+  id: ID!
+  field: String!
+  operator: RuleOperator!
+  value: String!
+  condition: RuleCondition!
+  description: String
+}
+
+type Violation {
+  id: ID!
+  policyId: ID!
+  policy: Policy!
+  resourceId: ID!
+  resource: Resource!
+  severity: Severity!
+  status: ViolationStatus!
+  description: String
+  details: JSON
+  detectedAt: DateTime!
+  resolvedAt: DateTime
+  resolvedBy: String
+  resolution: ViolationResolution
+  ignoreReason: String
+  remediation: Remediation
+  attackPaths: [AttackPath!]!
+  mlPrediction: MLPrediction
+  falsePositive: Boolean
+  confidence: Float
+  tags: [String!]!
+}
+
+type Resource {
+  id: ID!
+  name: String!
+  type: String!
+  cloudProvider: CloudProvider!
+  accountId: String!
+  region: String!
+  properties: JSON!
+  tags: [Tag!]!
+  status: ResourceStatus!
+  createdAt: DateTime!
+  updatedAt: DateTime!
+  lastScanned: DateTime
+  violations: [Violation!]!
+  attackPaths: [AttackPath!]!
+  dependencies: [ResourceDependency!]!
+  compliance: ComplianceStatus
+}
+
+type Tag {
+  key: String!
+  value: String!
+  source: TagSource!
+}
+
+type AttackPath {
+  id: ID!
+  name: String!
+  description: String
+  severity: Severity!
+  source: Resource!
+  target: Resource!
+  path: [Resource!]!
+  techniques: [AttackTechnique!]!
+  riskScore: Float!
+  exploitability: Exploitability!
+  detectedAt: DateTime!
+  mitigations: [Mitigation!]!
+}
+
+type Evaluation {
+  id: ID!
+  type: EvaluationType!
+  status: EvaluationStatus!
+  result: EvaluationResult!
+  score: Float!
+  confidence: Float!
+  violations: [Violation!]!
+  resources: [Resource!]!
+  iacType: IaCType!
+  context: JSON!
+  triggeredBy: String!
+  triggeredAt: DateTime!
+  completedAt: DateTime!
+  duration: Float!
+  mlPredictions: [MLPrediction!]!
+  recommendations: [Recommendation!]!
+}
+
+type ComplianceReport {
+  id: ID!
+  tenantId: String!
+  timeframe: Timeframe!
+  overallScore: Float!
+  status: ComplianceStatus!
+  frameworks: [FrameworkCompliance!]!
+  policies: [PolicyCompliance!]!
+  resources: [ResourceCompliance!]!
+  violations: [Violation!]!
+  trends: ComplianceTrend!
+  generatedAt: DateTime!
+}
+
+type MLModel {
+  id: ID!
+  type: MLModelType!
+  version: String!
+  status: MLModelStatus!
+  accuracy: Float!
+  precision: Float!
+  recall: Float!
+  f1Score: Float!
+  aucRoc: Float!
+  trainingSamples: Int!
+  trainedAt: DateTime!
+  isActive: Boolean!
+  metrics: JSON!
+  featureImportance: JSON!
+  driftDetected: Boolean!
+  lastEvaluated: DateTime!
+}
+
+type MonitoringDashboard {
+  tenantId: String!
+  overview: MonitoringOverview!
+  performance: PerformanceMetrics!
+  drift: DriftAnalysis!
+  alerts: [Alert!]!
+  predictions: PredictionMetrics!
+  timestamp: DateTime!
+}
+
+type Analytics {
+  type: AnalyticsType!
+  data: JSON!
+  insights: [Insight!]!
+  recommendations: [Recommendation!]!
+  generatedAt: DateTime!
+}
+
+# Supporting Types
+
+type Overview {
+  totalResources: Int!
+  totalViolations: Int!
+  criticalViolations: Int!
+  highViolations: Int!
+  riskScore: Float!
+  complianceScore: Float!
+  activePolicies: Int!
+  lastScan: DateTime!
+  trends: OverviewTrend!
+}
+
+type OverviewTrend {
+  violations: [TrendPoint!]!
+  riskScore: [TrendPoint!]!
+  compliance: [TrendPoint!]!
+}
+
+type TrendPoint {
+  timestamp: DateTime!
+  value: Float!
+}
+
+type CloudProvider {
+  id: ID!
+  name: String!
+  displayName: String!
+  services: [CloudService!]!
+}
+
+type CloudService {
+  id: ID!
+  name: String!
+  displayName: String!
+  resourceTypes: [String!]!
+}
+
+type Subscription {
+  id: ID!
+  plan: SubscriptionPlan!
+  status: SubscriptionStatus!
+  limits: SubscriptionLimits!
+  expiresAt: DateTime!
+  features: [SubscriptionFeature!]!
+}
+
+type Remediation {
+  id: ID!
+  type: RemediationType!
+  status: RemediationStatus!
+  steps: [RemediationStep!]!
+  automated: Boolean!
+  estimatedTime: Int!
+  riskReduction: Float!
+  createdAt: DateTime!
+  completedAt: DateTime!
+}
+
+type RemediationStep {
+  order: Int!
+  description: String!
+  command: String
+  parameters: JSON!
+  rollbackCommand: String
+}
+
+type MLPrediction {
+  violationProbability: Float!
+  confidence: Float!
+  predictedViolations: [String!]!
+  explanation: JSON!
+  modelType: MLModelType!
+  modelVersion: String!
+  features: JSON!
+}
+
+type AttackTechnique {
+  id: String!
+  name: String!
+  description: String!
+  tactic: String!
+  mitigation: String!
+  references: [String!]!
+}
+
+type Mitigation {
+  id: ID!
+  name: String!
+  description: String!
+  type: MitigationType!
+  effectiveness: Float!
+  implementation: String!
+  automated: Boolean!
+}
+
+type ResourceDependency {
+  source: Resource!
+  target: Resource!
+  type: DependencyType!
+  strength: Float!
+}
+
+type FrameworkCompliance {
+  framework: ComplianceFramework!
+  score: Float!
+  status: ComplianceStatus!
+  controls: [ControlCompliance!]!
+  lastAssessed: DateTime!
+}
+
+type ControlCompliance {
+  controlId: String!
+  controlName: String!
+  status: ComplianceStatus!
+  evidence: [String!]!
+  exceptions: [String!]!
+}
+
+type PolicyCompliance {
+  policy: Policy!
+  status: ComplianceStatus!
+  violations: Int!
+  lastEvaluated: DateTime!
+  trend: ComplianceTrend!
+}
+
+type ResourceCompliance {
+  resource: Resource!
+  score: Float!
+  status: ComplianceStatus!
+  violations: [Violation!]!
+  frameworks: [FrameworkCompliance!]!
+}
+
+type ComplianceTrend {
+  timeframe: Timeframe!
+  score: Float!
+  change: Float!
+  violations: Int!
+  resolved: Int!
+  new: Int!
+}
+
+type PerformanceMetrics {
+  accuracy: Float!
+  precision: Float!
+  recall: Float!
+  f1Score: Float!
+  aucRoc: Float!
+  calibrationError: Float!
+  latency: Float!
+  throughput: Float!
+}
+
+type DriftAnalysis {
+  detected: Boolean!
+  type: DriftType!
+  severity: DriftSeverity!
+  features: [FeatureDrift!]!
+  performance: PerformanceDrift!
+  recommendations: [String!]!
+  detectedAt: DateTime!
+}
+
+type FeatureDrift {
+  feature: String!
+  method: String!
+  score: Float!
+  threshold: Float!
+  detected: Boolean!
+}
+
+type PerformanceDrift {
+  metric: String!
+  baseline: Float!
+  current: Float!
+  change: Float!
+  significant: Boolean!
+}
+
+type Alert {
+  id: ID!
+  type: AlertType!
+  severity: AlertSeverity!
+  title: String!
+  description: String!
+  source: String!
+  resourceId: ID
+  violationId: ID
+  acknowledged: Boolean!
+  acknowledgedBy: String
+  acknowledgedAt: DateTime!
+  resolved: Boolean!
+  resolvedAt: DateTime!
+  createdAt: DateTime!
+}
+
+type PredictionMetrics {
+  total: Int!
+  correct: Int!
+  accuracy: Float!
+  falsePositives: Int!
+  falseNegatives: Int!
+  precision: Float!
+  recall: Float!
+  averageConfidence: Float!
+}
+
+type Insight {
+  type: InsightType!
+  title: String!
+  description: String!
+  severity: InsightSeverity!
+  confidence: Float!
+  data: JSON!
+  recommendations: [String!]!
+  createdAt: DateTime!
+}
+
+type Recommendation {
+  type: RecommendationType!
+  title: String!
+  description: String!
+  priority: Priority!
+  effort: Effort!
+  impact: Impact!
+  actionable: Boolean!
+  automated: Boolean!
+  steps: [String!]!
+}
+
+# Enums
+
+enum PolicyCategory {
+  SECURITY
+  COMPLIANCE
+  COST
+  OPERATIONS
+  GOVERNANCE
+}
+
+enum Severity {
+  CRITICAL
+  HIGH
+  MEDIUM
+  LOW
+  INFO
+}
+
+enum CloudProvider {
+  AWS
+  AZURE
+  GCP
+  KUBERNETES
+}
+
+enum ViolationStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+  IGNORED
+  FALSE_POSITIVE
+}
+
+enum ViolationResolution {
+  FIXED
+  MITIGATED
+  ACCEPTED_RISK
+  FALSE_POSITIVE
+  NOT_APPLICABLE
+}
+
+enum ResourceStatus {
+  ACTIVE
+  INACTIVE
+  DELETING
+  ERROR
+}
+
+enum EvaluationType {
+  CI_CD
+  RUNTIME
+  MANUAL
+  SCHEDULED
+}
+
+enum EvaluationStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+enum EvaluationResult {
+  PASS
+  WARN
+  BLOCK
+  ERROR
+}
+
+enum IaCType {
+  TERRAFORM
+  CLOUDFORMATION
+  ARM
+  KUBERNETES
+}
+
+enum ComplianceStatus {
+  COMPLIANT
+  NON_COMPLIANT
+  PARTIALLY_COMPLIANT
+  UNKNOWN
+}
+
+enum ComplianceFramework {
+  PCI_DSS
+  HIPAA
+  GDPR
+  SOC2
+  ISO27001
+  NIST
+  CIS
+}
+
+enum MLModelType {
+  XGBOOST
+  LIGHTGBM
+  ISOLATION_FOREST
+  RANDOM_FOREST
+}
+
+enum MLModelStatus {
+  TRAINING
+  TRAINED
+  EVALUATING
+  ACTIVE
+  DEPRECATED
+  ERROR
+}
+
+enum Timeframe {
+  LAST_24_HOURS
+  LAST_7_DAYS
+  LAST_30_DAYS
+  LAST_90_DAYS
+  LAST_YEAR
+}
+
+enum UserRole {
+  ADMIN
+  SECURITY_ANALYST
+  COMPLIANCE_OFFICER
+  DEVELOPER
+  VIEWER
+}
+
+enum RuleOperator {
+  EQUALS
+  NOT_EQUALS
+  CONTAINS
+  NOT_CONTAINS
+  GREATER_THAN
+  LESS_THAN
+  IN
+  NOT_IN
+  REGEX
+}
+
+enum RuleCondition {
+  AND
+  OR
+  NOT
+}
+
+enum TagSource {
+  USER
+  SYSTEM
+  CLOUD
+  ML
+}
+
+enum Exploitability {
+  HIGH
+  MEDIUM
+  LOW
+  UNKNOWN
+}
+
+enum RemediationType {
+  AUTOMATED
+  MANUAL
+  SEMI_AUTOMATED
+}
+
+enum RemediationStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+enum DependencyType {
+  DEPENDS_ON
+  CONNECTS_TO
+  AFFECTS
+  MANAGES
+}
+
+enum MitigationType {
+  PREVENTIVE
+  DETECTIVE
+  CORRECTIVE
+}
+
+enum SubscriptionPlan {
+  FREE
+  PROFESSIONAL
+  ENTERPRISE
+  CUSTOM
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  TRIAL
+  EXPIRED
+  CANCELLED
+}
+
+enum AnalyticsType {
+  VIOLATION_TRENDS
+  RISK_ANALYSIS
+  COMPLIANCE_REPORTING
+  RESOURCE_INVENTORY
+  ATTACK_PATH_ANALYSIS
+  ML_PERFORMANCE
+}
+
+enum InsightType {
+  ANOMALY
+  TREND
+  CORRELATION
+  PREDICTION
+  RECOMMENDATION
+}
+
+enum InsightSeverity {
+  CRITICAL
+  HIGH
+  MEDIUM
+  LOW
+  INFO
+}
+
+enum RecommendationType {
+  SECURITY
+  COMPLIANCE
+  COST
+  PERFORMANCE
+  GOVERNANCE
+}
+
+enum Priority {
+  CRITICAL
+  HIGH
+  MEDIUM
+  LOW
+}
+
+enum Effort {
+  LOW
+  MEDIUM
+  HIGH
+  VERY_HIGH
+}
+
+enum Impact {
+  LOW
+  MEDIUM
+  HIGH
+  VERY_HIGH
+}
+
+enum AlertType {
+  VIOLATION
+  COMPLIANCE
+  SECURITY
+  PERFORMANCE
+  SYSTEM
+}
+
+enum AlertSeverity {
+  CRITICAL
+  HIGH
+  MEDIUM
+  LOW
+  INFO
+}
+
+enum DriftType {
+  CONCEPT
+  DATA
+  PERFORMANCE
+  FEATURE
+}
+
+enum DriftSeverity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+# Input Types
+
+input PolicyInput {
+  name: String!
+  description: String
+  category: PolicyCategory!
+  severity: Severity!
+  cloudProvider: CloudProvider!
+  resourceType: String!
+  rules: [PolicyRuleInput!]!
+  tags: [String!]
+  mlEnhanced: Boolean
+  mlThreshold: Float
+  mlWeight: Float
+}
+
+input PolicyRuleInput {
+  field: String!
+  operator: RuleOperator!
+  value: String!
+  condition: RuleCondition!
+  description: String
+}
+
+input ViolationInput {
+  status: ViolationStatus
+  falsePositive: Boolean
+  tags: [String!]
+}
+
+input ViolationResolution {
+  type: ViolationResolution!
+  notes: String
+  evidence: [String!]
+}
+
+input ResourceInput {
+  tags: [TagInput!]
+  properties: JSON
+}
+
+input TagInput {
+  key: String!
+  value: String!
+}
+
+input AccountInput {
+  name: String!
+  tenantId: String!
+  cloudProviders: [CloudProvider!]!
+}
+
+input MLWeightsInput {
+  policy: Float!
+  ml: Float!
+}
+
+# Filter Types
+
+input PolicyFilter {
+  category: PolicyCategory
+  severity: Severity
+  cloudProvider: CloudProvider
+  enabled: Boolean
+  mlEnhanced: Boolean
+  tags: [String!]
+}
+
+input ViolationFilter {
+  severity: Severity
+  status: ViolationStatus
+  policyId: ID
+  resourceId: ID
+  cloudProvider: CloudProvider
+  resolved: Boolean
+  timeframe: Timeframe
+  tags: [String!]
+}
+
+input ResourceFilter {
+  type: String
+  cloudProvider: CloudProvider
+  accountId: String
+  region: String
+  status: ResourceStatus
+  hasViolations: Boolean
+  tags: [String!]
+}
+
+input EvaluationFilter {
+  type: EvaluationType
+  status: EvaluationStatus
+  result: EvaluationResult
+  iacType: IaCType
+  timeframe: Timeframe
+  triggeredBy: String
+}
