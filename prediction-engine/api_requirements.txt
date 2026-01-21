@@ -1,0 +1,28 @@
+# FastAPI and web framework
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
+pydantic>=2.5.0
+python-multipart>=0.0.6
+
+# Database and storage
+neo4j>=5.14.0
+redis>=5.0.0
+
+# Background tasks
+celery>=5.3.0
+kombu>=5.3.0
+
+# Monitoring and logging
+prometheus-client>=0.19.0
+structlog>=23.2.0
+
+# Security
+python-jose[cryptography]>=3.3.0
+passlib[bcrypt]>=1.7.4
+python-multipart>=0.0.6
+
+# Development and testing
+pytest>=7.4.0
+pytest-asyncio>=0.21.0
+httpx>=0.25.0
+factory-boy>=3.3.0
