@@ -1,0 +1,363 @@
+scalar JSON
+scalar DateTime
+scalar UUID
+
+type Query {
+  # Dashboard Overview
+  dashboardOverview(tenantId: String!): DashboardOverview!
+  
+  # Violations
+  violations(
+    tenantId: String!
+    filters: ViolationFilters
+    pagination: PaginationInput
+    sortBy: ViolationSortInput
+  ): ViolationConnection!
+  
+  violation(id: ID!): Violation!
+  
+  # Policies
+  policies(
+    tenantId: String!
+    filters: PolicyFilters
+  ): [Policy!]!
+  
+  policy(id: ID!): Policy!
+  
+  # Resources
+  resources(
+    tenantId: String!
+    filters: ResourceFilters
+    pagination: PaginationInput
+  ): ResourceConnection!
+  
+  resource(id: ID!): Resource!
+  
+  # Attack Paths
+  attackPaths(
+    tenantId: String!
+    from: String
+    to: String
+    maxDepth: Int = 5
+  ): [AttackPath!]!
+  
+  # Compliance
+  complianceReport(
+    tenantId: String!
+    timeframe: TimeframeInput
+    standard: ComplianceStandard
+  ): ComplianceReport!
+  
+  # CI/CD
+  evaluations(
+    tenantId: String!
+    filters: EvaluationFilters
+    pagination: PaginationInput
+  ): EvaluationConnection!
+  
+  evaluation(id: ID!): Evaluation!
+  
+  # ML Predictions
+  predictions(
+    tenantId: String!
+    filters: PredictionFilters
+  ): [Prediction!]!
+  
+  modelMetrics(tenantId: String!): ModelMetrics!
+  
+  # Graph Queries
+  graphQuery(
+    tenantId: String!
+    query: String!
+    parameters: JSON
+  ): GraphResult!
+  
+  # Search
+  search(
+    tenantId: String!
+    query: String!
+    types: [SearchType!]
+  ): SearchResults!
+}
+
+type Mutation {
+  # Policy Management
+  createPolicy(input: PolicyInput!): Policy!
+  updatePolicy(id: ID!, input: PolicyInput!): Policy!
+  deletePolicy(id: ID!): Boolean!
+  togglePolicy(id: ID!, enabled: Boolean!): Policy!
+  
+  # Violation Management
+  updateViolation(id: ID!, input: ViolationUpdateInput!): Violation!
+  bulkUpdateViolations(ids: [ID!]!, input: ViolationUpdateInput!): BulkUpdateResult!
+  remediateViolation(id: ID!, action: RemediationAction!): RemediationResult!
+  
+  # Resource Management
+  tagResource(id: ID!, tags: [TagInput!]!): Resource!
+  untagResource(id: ID!, tagKeys: [String!]!): Resource!
+  
+  # CI/CD Actions
+  overrideEvaluation(id: ID!, override: OverrideInput!): Evaluation!
+  retryEvaluation(id: ID!): Evaluation!
+  
+  # ML Actions
+  retrainModel(tenantId: String!): ModelTrainingResult!
+  updateModelThresholds(input: ModelThresholdsInput!): ModelMetrics!
+}
+
+type Subscription {
+  # Real-time Updates
+  violationCreated(tenantId: String!): Violation!
+  violationUpdated(tenantId: String!): Violation!
+  policyUpdated(tenantId: String!): Policy!
+  resourceUpdated(tenantId: String!): Resource!
+  
+  # System Events
+  systemAlert(tenantId: String!): SystemAlert!
+  complianceChange(tenantId: String!): ComplianceChange!
+}
+
+# Types
+type DashboardOverview {
+  metrics: DashboardMetrics!
+  recentViolations: [Violation!]!
+  topPolicies: [PolicySummary!]!
+  complianceTrend: ComplianceTrend!
+  resourceSummary: ResourceSummary!
+  mlInsights: MLInsights!
+}
+
+type DashboardMetrics {
+  totalResources: Int!
+  totalViolations: Int!
+  criticalViolations: Int!
+  highViolations: Int!
+  mediumViolations: Int!
+  lowViolations: Int!
+  complianceScore: Float!
+  attackPathsCount: Int!
+  avgRemediationTime: Int!
+  costOptimization: CostMetrics!
+}
+
+type Violation {
+  id: ID!
+  policyId: String!
+  policyName: String!
+  resourceId: String!
+  resourceType: String!
+  resourceName: String!
+  cloudProvider: CloudProvider!
+  severity: Severity!
+  status: ViolationStatus!
+  description: String!
+  detectedAt: DateTime!
+  lastUpdated: DateTime!
+  remediation: RemediationInfo
+  context: JSON!
+  metadata: ViolationMetadata!
+  relatedViolations: [Violation!]!
+}
+
+type Policy {
+  id: ID!
+  name: String!
+  description: String
+  version: String!
+  severity: Severity!
+  enabled: Boolean!
+  resources: ResourceSelector!
+  condition: JSON!
+  actions: [Action!]!
+  enforcement: EnforcementConfig!
+  createdAt: DateTime!
+  updatedAt: DateTime!
+  createdBy: String!
+  violationCount: Int!
+  evaluationCount: Int!
+  effectiveness: Float!
+}
+
+type Resource {
+  id: ID!
+  type: String!
+  cloudProvider: CloudProvider!
+  accountId: String!
+  region: String!
+  name: String!
+  state: ResourceState!
+  tags: [Tag!]!
+  properties: JSON!
+  createdAt: DateTime!
+  lastModified: DateTime!
+  violations: [Violation!]!
+  connections: [ResourceConnection!]!
+  compliance: ResourceCompliance!
+  cost: CostInfo
+}
+
+type AttackPath {
+  id: ID!
+  path: [AttackPathNode!]!
+  riskScore: Float!
+  description: String!
+  severity: Severity!
+  steps: [AttackStep!]!
+  mitigations: [Mitigation!]!
+  lastAnalyzed: DateTime!
+}
+
+type ComplianceReport {
+  overallScore: Float!
+  standards: [ComplianceStandardScore!]!
+  controls: [ComplianceControl!]!
+  timeline: [ComplianceSnapshot!]!
+  gaps: [ComplianceGap!]!
+  recommendations: [ComplianceRecommendation!]!
+}
+
+type Evaluation {
+  id: ID!
+  type: EvaluationType!
+  status: EvaluationStatus!
+  result: EvaluationResult!
+  trigger: EvaluationTrigger!
+  iacPlan: IACPlanInfo
+  violations: [Violation!]!
+  predictions: MLPredictions
+  createdAt: DateTime!
+  completedAt: DateTime
+  metadata: JSON!
+}
+
+type Prediction {
+  id: ID!
+  resourceId: String!
+  resourceType: String!
+  violationProbability: Float!
+  confidence: Float!
+  predictedViolations: [String!]!
+  features: JSON!
+  explanation: PredictionExplanation!
+  timestamp: DateTime!
+}
+
+type ModelMetrics {
+  accuracy: Float!
+  precision: Float!
+  recall: Float!
+  f1Score: Float!
+  aucRoc: Float!
+  featureImportance: [FeatureImportance!]!
+  confusionMatrix: ConfusionMatrix!
+  trainingInfo: TrainingInfo!
+  driftMetrics: DriftMetrics
+}
+
+# Input Types
+input ViolationFilters {
+  severity: [Severity!]
+  status: [ViolationStatus!]
+  cloudProvider: [CloudProvider!]
+  resourceType: [String!]
+  policyId: [String!]
+  dateRange: DateRangeInput
+  search: String
+}
+
+input ResourceFilters {
+  cloudProvider: [CloudProvider!]
+  resourceType: [String!]
+  accountId: [String!]
+  region: [String!]
+  state: [ResourceState!]
+  tags: [TagFilter!]
+  hasViolations: Boolean
+  search: String
+}
+
+input PaginationInput {
+  page: Int = 1
+  pageSize: Int = 20
+}
+
+input PolicyInput {
+  name: String!
+  description: String
+  severity: Severity!
+  resources: ResourceSelectorInput!
+  condition: JSON!
+  actions: [ActionInput!]!
+  enforcement: EnforcementConfigInput!
+}
+
+# Enums
+enum CloudProvider {
+  AWS
+  AZURE
+  GCP
+  KUBERNETES
+}
+
+enum Severity {
+  CRITICAL
+  HIGH
+  MEDIUM
+  LOW
+  INFO
+}
+
+enum ViolationStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+  SUPPRESSED
+  FALSE_POSITIVE
+}
+
+enum ResourceState {
+  ACTIVE
+  STOPPED
+  TERMINATED
+  ERROR
+}
+
+enum EvaluationType {
+  RUNTIME
+  SCHEDULED
+  CI_CD
+  AD_HOC
+}
+
+enum EvaluationResult {
+  PASS
+  WARN
+  BLOCK
+  ERROR
+}
+
+# Connections for pagination
+type ViolationConnection {
+  items: [Violation!]!
+  totalCount: Int!
+  pageInfo: PageInfo!
+}
+
+type ResourceConnection {
+  items: [Resource!]!
+  totalCount: Int!
+  pageInfo: PageInfo!
+}
+
+type EvaluationConnection {
+  items: [Evaluation!]!
+  totalCount: Int!
+  pageInfo: PageInfo!
+}
+
+type PageInfo {
+  hasNextPage: Boolean!
+  hasPreviousPage: Boolean!
+  currentPage: Int!
+  totalPages: Int!
+}
