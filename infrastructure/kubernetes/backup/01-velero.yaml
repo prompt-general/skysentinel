@@ -1,0 +1,50 @@
+# 1. Velero for Kubernetes Backup
+apiVersion: helm.cattle.io/v1
+kind: HelmChart
+metadata:
+  name: velero
+  namespace: velero
+spec:
+  chart: velero
+  repo: https://vmware-tanzu.github.io/helm-charts
+  targetNamespace: velero
+  valuesContent: |-
+    configuration:
+      provider: aws
+      backupStorageLocation:
+        name: aws
+        provider: aws
+        bucket: skysentinel-backups-${AWS_ACCOUNT_ID}
+        config:
+          region: ${AWS_REGION}
+      volumeSnapshotLocation:
+        name: aws
+        provider: aws
+        config:
+          region: ${AWS_REGION}
+    
+    credentials:
+      useSecret: true
+      secretContents:
+        cloud: |
+          [default]
+          aws_access_key_id=${AWS_ACCESS_KEY_ID}
+          aws_secret_access_key=${AWS_SECRET_ACCESS_KEY}
+    
+    schedules:
+      daily-backup:
+        schedule: "0 1 * * *"
+        template:
+          includedNamespaces:
+          - skysentinel-production
+          - monitoring
+          snapshotVolumes: true
+          ttl: "720h"
+    
+    initContainers:
+    - name: velero-plugin-for-aws
+      image: velero/velero-plugin-for-aws:v1.7.0
+      imagePullPolicy: IfNotPresent
+      volumeMounts:
+      - mountPath: /target
+        name: plugins

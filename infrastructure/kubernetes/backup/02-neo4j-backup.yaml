@@ -1,0 +1,64 @@
+# 2. Neo4j Backup CronJob
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: neo4j-backup
+  namespace: skysentinel-production
+spec:
+  schedule: "0 2 * * *"  # Daily at 2 AM
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 600
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          serviceAccountName: neo4j-backup
+          containers:
+          - name: neo4j-backup
+            image: neo4j:5.11-enterprise
+            command:
+            - /bin/bash
+            - -c
+            - |
+              # Dump database
+              neo4j-admin database dump neo4j --to-path=/backups/neo4j-$(date +%Y%m%d-%H%M%S).dump
+              
+              # Upload to S3
+              aws s3 cp /backups/ s3://${S3_BACKUP_BUCKET}/neo4j/ --recursive
+              
+              # Cleanup old backups
+              find /backups -type f -mtime +7 -delete
+              
+              echo "Backup completed at $(date)"
+            env:
+            - name: AWS_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: skysentinel-secrets
+                  key: AWS_ACCESS_KEY_ID
+            - name: AWS_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: skysentinel-secrets
+                  key: AWS_SECRET_ACCESS_KEY
+            - name: S3_BACKUP_BUCKET
+              value: "skysentinel-backups-${AWS_ACCOUNT_ID}"
+            volumeMounts:
+            - name: neo4j-data
+              mountPath: /data
+              readOnly: true
+            - name: backup-volume
+              mountPath: /backups
+            - name: aws-config
+              mountPath: /root/.aws
+              readOnly: true
+          restartPolicy: OnFailure
+          volumes:
+          - name: neo4j-data
+            persistentVolumeClaim:
+              claimName: neo4j-data
+          - name: backup-volume
+            emptyDir: {}
+          - name: aws-config
+            configMap:
+              name: aws-config

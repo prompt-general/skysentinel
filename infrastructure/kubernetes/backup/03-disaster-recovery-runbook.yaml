@@ -1,0 +1,115 @@
+# 3. Disaster Recovery Runbook ConfigMap
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: disaster-recovery-runbook
+  namespace: skysentinel-production
+data:
+  README.md: |
+    # SkySentinel Disaster Recovery Runbook
+    
+    ## Recovery Time Objective (RTO): 4 hours
+    ## Recovery Point Objective (RPO): 1 hour
+    
+    ## Recovery Procedures
+    
+    ### 1. Complete Outage Recovery
+    
+    1. **Assess Damage**
+       - Check Velero backup status
+       - Verify S3 backups exist
+       - Determine scope of failure
+       
+    2. **Restore Kubernetes Resources**
+       ```
+       # Restore from Velero backup
+       velero restore create --from-backup daily-backup --wait
+       
+       # Verify restored resources
+       kubectl get all -n skysentinel-production
+       ```
+       
+    3. **Restore Neo4j Database**
+       ```
+       # Get latest backup from S3
+       LATEST_BACKUP=$(aws s3 ls s3://skysentinel-backups/neo4j/ | sort | tail -1 | awk '{print $4}')
+       
+       # Download and restore
+       aws s3 cp s3://skysentinel-backups/neo4j/$LATEST_BACKUP /tmp/
+       neo4j-admin database load --from-path=/tmp/$LATEST_BACKUP --database=neo4j --force
+       ```
+       
+    4. **Verify System Health**
+       - Check all pods are running
+       - Verify API Gateway responds
+       - Test policy evaluations
+       - Validate data integrity
+       
+    ### 2. Data Corruption Recovery
+    
+    1. **Identify Corrupted Data**
+       ```
+       # Check Neo4j consistency
+       neo4j-admin check-consistency --database=neo4j
+       ```
+       
+    2. **Restore from Backup**
+       - Use point-in-time recovery from S3
+       
+    3. **Replay Event Logs**
+       - Replay CloudTrail events from S3
+       - Rebuild graph incrementally
+       
+    ### 3. Regional Failure Recovery
+    
+    1. **Failover to Secondary Region**
+       - Update DNS to secondary region
+       - Activate warm standby cluster
+       
+    2. **Restore Services**
+       - Use cross-region S3 backups
+       - Update configuration for new region
+       
+    ## Contact Information
+    
+    - Platform Team: platform@skysentinel.io
+    - Security Team: security@skysentinel.io
+    - On-Call Engineer: +1-XXX-XXX-XXXX
+    
+  backup-verification.sh: |
+    #!/bin/bash
+    # Backup verification script
+    # Run daily to ensure backups are working
+    
+    echo "Starting backup verification..."
+    
+    # Check Velero backups
+    if velero backup get daily-backup | grep -q "Completed"; then
+        echo "✓ Velero backup completed successfully"
+    else
+        echo "✗ Velero backup failed"
+        exit 1
+    fi
+    
+    # Check S3 backups
+    BACKUP_COUNT=$(aws s3 ls s3://skysentinel-backups/neo4j/ | wc -l)
+    if [ $BACKUP_COUNT -gt 0 ]; then
+        echo "✓ $BACKUP_COUNT Neo4j backups found in S3"
+    else
+        echo "✗ No Neo4j backups found in S3"
+        exit 1
+    fi
+    
+    # Verify backup integrity
+    LATEST_BACKUP=$(aws s3 ls s3://skysentinel-backups/neo4j/ | sort | tail -1 | awk '{print $4}')
+    aws s3 cp s3://skysentinel-backups/neo4j/$LATEST_BACKUP /tmp/test-backup.dump
+    
+    if file /tmp/test-backup.dump | grep -q "Neo4j dump"; then
+        echo "✓ Latest backup file is valid"
+    else
+        echo "✗ Backup file corrupted"
+        exit 1
+    fi
+    
+    echo "Backup verification completed successfully"
+    exit 0

@@ -1,0 +1,47 @@
+# 4. Backup Verification CronJob
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: backup-verification
+  namespace: skysentinel-production
+spec:
+  schedule: "0 6 * * *"  # Daily at 6 AM (after backups)
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 300
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          serviceAccountName: backup-verification
+          containers:
+          - name: backup-verification
+            image: amazon/aws-cli:2.13.25
+            command:
+            - /bin/bash
+            - -c
+            - |
+              # Run backup verification script
+              /scripts/backup-verification.sh
+              
+              # Send notification if verification fails
+              if [ $? -ne 0 ]; then
+                curl -X POST -H 'Content-type: application/json' \
+                  --data '{"text":"🚨 SkySentinel Backup Verification Failed! Please check backup systems immediately."}' \
+                  ${SLACK_WEBHOOK_URL}
+              fi
+            env:
+            - name: SLACK_WEBHOOK_URL
+              valueFrom:
+                secretKeyRef:
+                  name: skysentinel-secrets
+                  key: SLACK_WEBHOOK_URL
+            volumeMounts:
+            - name: verification-scripts
+              mountPath: /scripts
+              readOnly: true
+          restartPolicy: OnFailure
+          volumes:
+          - name: verification-scripts
+            configMap:
+              name: disaster-recovery-runbook
+              defaultMode: 0755

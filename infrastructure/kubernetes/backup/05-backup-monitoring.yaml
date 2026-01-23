@@ -1,0 +1,123 @@
+# 5. Backup Monitoring and Alerts
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: backup-monitoring-rules
+  namespace: monitoring
+data:
+  backup-rules.yaml: |
+    groups:
+    - name: backup.rules
+      rules:
+      - alert: VeleroBackupFailed
+        expr: velero_backup_status{status="Failed"} == 1
+        for: 0m
+        labels:
+          severity: critical
+          team: platform
+        annotations:
+          summary: "Velero backup failed"
+          description: "Backup {{ $labels.backupName }} failed to complete"
+      
+      - alert: VeleroBackupNotCompleted
+        expr: velero_backup_status{status="Completed"} == 0 and velero_backup_start_time > time() - 86400
+        for: 2h
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "Daily Velero backup not completed"
+          description: "No successful backup in the last 24 hours"
+      
+      - alert: Neo4jBackupFailed
+        expr: kube_cronjob_status_failed{job_name="neo4j-backup"} > 0
+        for: 0m
+        labels:
+          severity: critical
+          team: platform
+        annotations:
+          summary: "Neo4j backup failed"
+          description: "Neo4j backup CronJob has failed"
+      
+      - alert: BackupStorageUsageHigh
+        expr: (aws_s3_bucket_size_bytes{bucket="skysentinel-backups"} / aws_s3_bucket_size_bytes{bucket="skysentinel-backups"}) > 0.8
+        for: 1h
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "Backup storage usage high"
+          description: "S3 backup bucket is {{ $value | humanizePercentage }} full"
+      
+      - alert: BackupAgeTooOld
+        expr: time() - velero_backup_last_success_timestamp > 172800  # 48 hours
+        for: 0m
+        labels:
+          severity: critical
+          team: platform
+        annotations:
+          summary: "Backup age too old"
+          description: "Last successful backup was {{ $value | humanizeDuration }} ago"
+
+---
+# Service Account for Backup Operations
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: neo4j-backup
+  namespace: skysentinel-production
+
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: backup-verification
+  namespace: skysentinel-production
+
+---
+# RBAC for Backup Operations
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: backup-operator
+  namespace: skysentinel-production
+rules:
+- apiGroups: [""]
+  resources: ["pods", "pods/log"]
+  verbs: ["get", "list"]
+- apiGroups: ["apps"]
+  resources: ["deployments", "replicasets"]
+  verbs: ["get", "list"]
+- apiGroups: ["batch"]
+  resources: ["cronjobs", "jobs"]
+  verbs: ["get", "list", "create", "patch"]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: neo4j-backup-binding
+  namespace: skysentinel-production
+subjects:
+- kind: ServiceAccount
+  name: neo4j-backup
+  namespace: skysentinel-production
+roleRef:
+  kind: Role
+  name: backup-operator
+  apiGroup: rbac.authorization.k8s.io
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: backup-verification-binding
+  namespace: skysentinel-production
+subjects:
+- kind: ServiceAccount
+  name: backup-verification
+  namespace: skysentinel-production
+roleRef:
+  kind: Role
+  name: backup-operator
+  apiGroup: rbac.authorization.k8s.io
