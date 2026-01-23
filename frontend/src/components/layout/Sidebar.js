@@ -12,9 +12,9 @@ import {
   FiTarget,
   FiCheckSquare,
   FiGitBranch
-  FiBarChart
-  FiUsers
-  FiLock
+  FiBarChart,
+  FiUsers,
+  FiLock,
   FiCloud,
   FiMonitor,
   FiTrendingUp
