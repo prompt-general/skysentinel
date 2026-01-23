@@ -1,0 +1,213 @@
+# 6. Grafana Dashboard ConfigMap
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: skysentinel-grafana-dashboards
+  namespace: monitoring
+  labels:
+    grafana_dashboard: "true"
+data:
+  skysentinel-overview.json: |
+    {
+      "dashboard": {
+        "title": "SkySentinel Overview",
+        "panels": [
+          {
+            "title": "Violations by Severity",
+            "type": "stat",
+            "targets": [
+              {
+                "expr": "sum by (severity) (skysentinel_violations_severity)",
+                "legendFormat": "{{severity}}"
+              }
+            ],
+            "fieldConfig": {
+              "defaults": {
+                "color": {
+                  "mode": "thresholds"
+                },
+                "thresholds": {
+                  "steps": [
+                    {"color": "green", "value": null},
+                    {"color": "yellow", "value": 1},
+                    {"color": "red", "value": 5}
+                  ]
+                }
+              }
+            }
+          },
+          {
+            "title": "API Gateway Request Rate",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "rate(skysentinel_api_requests_total[5m])",
+                "legendFormat": "Requests/sec"
+              }
+            ]
+          },
+          {
+            "title": "Policy Evaluation Latency",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "histogram_quantile(0.95, rate(skysentinel_policy_evaluation_duration_seconds_bucket[5m]))",
+                "legendFormat": "95th percentile"
+              },
+              {
+                "expr": "histogram_quantile(0.50, rate(skysentinel_policy_evaluation_duration_seconds_bucket[5m]))",
+                "legendFormat": "50th percentile"
+              }
+            ]
+          },
+          {
+            "title": "Neo4j Memory Usage",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "neo4j_memory_pool_bytes_used / neo4j_memory_pool_bytes_max",
+                "legendFormat": "Memory Usage %"
+              }
+            ]
+          },
+          {
+            "title": "Redis Memory Usage",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "redis_memory_used_bytes / redis_memory_max_bytes",
+                "legendFormat": "Memory Usage %"
+              }
+            ]
+          },
+          {
+            "title": "ML Model Drift",
+            "type": "stat",
+            "targets": [
+              {
+                "expr": "skysentinel_ml_drift_detected",
+                "legendFormat": "Drift Detected"
+              }
+            ]
+          }
+        ],
+        "time": {
+          "from": "now-1h",
+          "to": "now"
+        },
+        "refresh": "30s"
+      }
+    }
+  skysentinel-security.json: |
+    {
+      "dashboard": {
+        "title": "SkySentinel Security",
+        "panels": [
+          {
+            "title": "Security Violations Trend",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "rate(skysentinel_violations_total[5m])",
+                "legendFormat": "Violations/sec"
+              }
+            ]
+          },
+          {
+            "title": "Top Violation Types",
+            "type": "table",
+            "targets": [
+              {
+                "expr": "topk(10, sum by (violation_type) (skysentinel_violations_total))",
+                "legendFormat": "{{violation_type}}"
+              }
+            ]
+          },
+          {
+            "title": "Critical Violations",
+            "type": "stat",
+            "targets": [
+              {
+                "expr": "skysentinel_violations_severity{severity=\"critical\"}",
+                "legendFormat": "Critical"
+              }
+            ],
+            "fieldConfig": {
+              "defaults": {
+                "color": {
+                  "mode": "thresholds"
+                },
+                "thresholds": {
+                  "steps": [
+                    {"color": "green", "value": null},
+                    {"color": "red", "value": 1}
+                  ]
+                }
+              }
+            }
+          }
+        ],
+        "time": {
+          "from": "now-24h",
+          "to": "now"
+        },
+        "refresh": "1m"
+      }
+    }
+  skysentinel-infrastructure.json: |
+    {
+      "dashboard": {
+        "title": "SkySentinel Infrastructure",
+        "panels": [
+          {
+            "title": "CPU Usage",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "rate(container_cpu_usage_seconds_total[5m])",
+                "legendFormat": "{{pod}}"
+              }
+            ]
+          },
+          {
+            "title": "Memory Usage",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "container_memory_usage_bytes / 1024 / 1024",
+                "legendFormat": "{{pod}}"
+              }
+            ]
+          },
+          {
+            "title": "Network I/O",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "rate(container_network_receive_bytes_total[5m])",
+                "legendFormat": "RX {{pod}}"
+              },
+              {
+                "expr": "rate(container_network_transmit_bytes_total[5m])",
+                "legendFormat": "TX {{pod}}"
+              }
+            ]
+          },
+          {
+            "title": "Disk Usage",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "container_fs_usage_bytes / 1024 / 1024 / 1024",
+                "legendFormat": "{{pod}} GB"
+              }
+            ]
+          }
+        ],
+        "time": {
+          "from": "now-1h",
+          "to": "now"
+        },
+        "refresh": "30s"
+      }
+    }

@@ -1,0 +1,90 @@
+# 2. SkySentinel Dashboards ConfigMap
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: skysentinel-prometheus-rules
+  namespace: monitoring
+data:
+  skysentinel-rules.yaml: |
+    groups:
+    - name: skysentinel.rules
+      rules:
+      - alert: HighViolationRate
+        expr: rate(skysentinel_violations_total[5m]) > 10
+        for: 5m
+        labels:
+          severity: warning
+          team: security
+        annotations:
+          summary: "High violation rate detected"
+          description: "Violation rate is {{ $value }} per second"
+      
+      - alert: CriticalViolationsDetected
+        expr: skysentinel_violations_severity{severity="critical"} > 0
+        for: 2m
+        labels:
+          severity: critical
+          team: security
+        annotations:
+          summary: "Critical violations detected"
+          description: "{{ $value }} critical violations found"
+      
+      - alert: APIGatewayHighErrorRate
+        expr: rate(skysentinel_api_errors_total[5m]) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "API Gateway high error rate"
+          description: "Error rate is {{ $value }} per second"
+      
+      - alert: PolicyEngineHighLatency
+        expr: histogram_quantile(0.95, rate(skysentinel_policy_evaluation_duration_seconds_bucket[5m])) > 5
+        for: 10m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "Policy engine high latency"
+          description: "95th percentile latency is {{ $value }} seconds"
+      
+      - alert: Neo4jHighMemoryUsage
+        expr: neo4j_memory_pool_bytes_used / neo4j_memory_pool_bytes_max > 0.9
+        for: 5m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "Neo4j high memory usage"
+          description: "Memory usage is {{ $value | humanizePercentage }}"
+      
+      - alert: RedisHighMemoryUsage
+        expr: redis_memory_used_bytes / redis_memory_max_bytes > 0.8
+        for: 5m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "Redis high memory usage"
+          description: "Memory usage is {{ $value | humanizePercentage }}"
+      
+      - alert: MLModelDriftDetected
+        expr: skysentinel_ml_drift_detected > 0
+        for: 0m
+        labels:
+          severity: warning
+          team: ml
+        annotations:
+          summary: "ML model drift detected"
+          description: "Model drift has been detected"
+      
+      - alert: TenantQuotaExceeded
+        expr: skysentinel_tenant_resources_total / skysentinel_tenant_resources_limit > 0.9
+        for: 5m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "Tenant resource quota exceeded"
+          description: "Resource usage is {{ $value | humanizePercentage }} of limit"

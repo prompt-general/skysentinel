@@ -1,0 +1,38 @@
+# 4. Jaeger for Distributed Tracing
+apiVersion: jaegertracing.io/v1
+kind: Jaeger
+metadata:
+  name: skysentinel-jaeger
+  namespace: monitoring
+spec:
+  strategy: production
+  storage:
+    type: elasticsearch
+    options:
+      es:
+        server-urls: http://elasticsearch:9200
+        index-prefix: jaeger
+        username: elastic
+        password: ${ELASTIC_PASSWORD}
+  ingress:
+    enabled: true
+    annotations:
+      kubernetes.io/ingress.class: nginx
+    hosts:
+    - jaeger.skysentinel.io
+  agent:
+    strategy: DaemonSet
+  collector:
+    resources:
+      limits:
+        memory: 1Gi
+      requests:
+        cpu: 500m
+        memory: 512Mi
+  query:
+    resources:
+      limits:
+        memory: 1Gi
+      requests:
+        cpu: 500m
+        memory: 512Mi

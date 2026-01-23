@@ -1,0 +1,55 @@
+# 3. Loki for Log Aggregation
+apiVersion: helm.cattle.io/v1
+kind: HelmChart
+metadata:
+  name: loki-stack
+  namespace: monitoring
+spec:
+  chart: loki-stack
+  repo: https://grafana.github.io/helm-charts
+  targetNamespace: monitoring
+  valuesContent: |-
+    loki:
+      enabled: true
+      persistence:
+        enabled: true
+        size: 50Gi
+      config:
+        auth_enabled: false
+        ingester:
+          chunk_idle_period: 3m
+          chunk_block_size: 262144
+          chunk_retain_period: 1m
+          max_transfer_retries: 0
+          lifecycler:
+            ring:
+              kvstore:
+                store: inmemory
+              replication_factor: 1
+            final_sleep: 0s
+          chunk_target_size: 1536000
+    
+    promtail:
+      enabled: true
+      config:
+        serverPort: 3101
+        clients:
+        - url: http://loki:3100/loki/api/v1/push
+        scrapeConfigs:
+        - job_name: kubernetes-pods
+          kubernetes_sd_configs:
+          - role: pod
+          pipeline_stages:
+          - cri: {}
+          relabel_configs:
+          - source_labels: [__meta_kubernetes_pod_label_app]
+            target_label: app
+          - source_labels: [__meta_kubernetes_namespace]
+            target_label: namespace
+          - source_labels: [__meta_kubernetes_pod_name]
+            target_label: pod
+          - source_labels: [__meta_kubernetes_pod_container_name]
+            target_label: container
+    
+    grafana:
+      enabled: false  # Use the one from prometheus stack
