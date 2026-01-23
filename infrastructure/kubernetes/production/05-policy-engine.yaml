@@ -1,0 +1,52 @@
+# 9. Policy Engine Worker Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: policy-engine
+  namespace: skysentinel-production
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: policy-engine
+  template:
+    metadata:
+      labels:
+        app: policy-engine
+    spec:
+      serviceAccountName: skysentinel-worker
+      containers:
+      - name: policy-engine
+        image: skysentinel/policy-engine:1.0.0
+        env:
+        - name: WORKER_TYPE
+          value: "policy"
+        - name: NEO4J_URI
+          value: "bolt://neo4j.skysentinel-production.svc.cluster.local:7687"
+        - name: REDIS_URL
+          value: "redis://redis-cluster.skysentinel-production.svc.cluster.local:6379"
+        resources:
+          requests:
+            memory: "1Gi"
+            cpu: "500m"
+          limits:
+            memory: "2Gi"
+            cpu: "1"
+        securityContext:
+          runAsNonRoot: true
+          runAsUser: 1001
+      - name: ml-worker
+        image: skysentinel/ml-engine:1.0.0
+        env:
+        - name: WORKER_TYPE
+          value: "ml"
+        resources:
+          requests:
+            memory: "2Gi"
+            cpu: "1"
+          limits:
+            memory: "4Gi"
+            cpu: "2"
+        securityContext:
+          runAsNonRoot: true
+          runAsUser: 1002
