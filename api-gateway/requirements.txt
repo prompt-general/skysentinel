@@ -38,3 +38,6 @@ redis>=5.0.0
 
 # Security dependencies
 PyJWT>=2.8.0
+
+# Audit and database dependencies
+neo4j>=5.0.0
