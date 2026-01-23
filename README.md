@@ -26,31 +26,147 @@ SkySentinel is a comprehensive, production-ready security platform that provides
 
 ## 🏗️ Architecture Overview
 
-```
-┌─────────────────────────────────────────────────────────────────────────────────┐
-│                           SkySentinel Platform                              │
-├─────────────────────────────────────────────────────────────────────────────────┤
-│  🎯 Frontend Dashboard    │  📊 Analytics Engine   │  🔍 Threat Intelligence   │
-│  - Real-time Monitoring   │  - ML Models           │  - IOC Management         │
-│  - Interactive Charts     │  - Anomaly Detection   │  - Threat Feeds           │
-│  - Alert Management      │  - Pattern Recognition │  - Risk Scoring          │
-├─────────────────────────────────────────────────────────────────────────────────┤
-│  🚀 API Gateway           │  🧠 Graph Engine        │  ⚙️ Policy Engine          │
-│  - Authentication        │  - Neo4j Graph DB      │  - Rule Evaluation       │
-│  - Rate Limiting         │  - Attack Path Analysis│  - Compliance Checks      │
-│  - Request Validation     │  - Relationship Mapping│  - Automated Remediation  │
-├─────────────────────────────────────────────────────────────────────────────────┤
-│  ☁️ Event Collectors       │  📈 Performance Engine  │  🛡️ Security Engine       │
-│  - AWS CloudTrail        │  - Load Testing        │  - Penetration Testing    │
-│  - Azure Sentinel        │  - Stress Testing      │  - Vulnerability Scanning  │
-│  - GCP Security          │  - Database Performance│  - Compliance Automation  │
-│  - Custom Integrations   │  - Optimization Tools │  - Security Monitoring    │
-├─────────────────────────────────────────────────────────────────────────────────┤
-│  🏗️ Infrastructure as Code  │  🔧 DevOps & CI/CD     │  📚 Documentation        │
-│  - Terraform (AWS)       │  - GitLab CI/CD        │  - API Documentation     │
-│  - Kubernetes            │  - GitHub Actions     │  - Configuration Guide    │
-│  - Docker Compose        │  - Jenkins Pipeline    │  - Deployment Guide       │
-└─────────────────────────────────────────────────────────────────────────────────┘
+```mermaid
+graph TB
+    %% External Cloud Providers
+    subgraph "☁️ Cloud Providers"
+        AWS[AWS Services<br/>CloudTrail, GuardDuty, S3]
+        AZURE[Azure Services<br/>Sentinel, Activity Logs]
+        GCP[GCP Services<br/>Security Command Center]
+    end
+
+    %% Event Collection Layer
+    subgraph "📡 Event Collection Layer"
+        EC1[AWS Event Collector]
+        EC2[Azure Event Collector]
+        EC3[GCP Event Collector]
+        EC4[Custom Collectors]
+        
+        AWS --> EC1
+        AZURE --> EC2
+        GCP --> EC3
+    end
+
+    %% API Gateway Layer
+    subgraph "🚀 API Gateway Layer"
+        AG[API Gateway<br/>Authentication<br/>Rate Limiting<br/>Request Validation]
+        SM[Security Middleware<br/>JWT Validation<br/>Input Validation]
+        AS[Audit Service<br/>Neo4j Logging<br/>Fallback File Logging]
+        
+        EC1 --> AG
+        EC2 --> AG
+        EC3 --> AG
+        EC4 --> AG
+        AG --> SM
+        SM --> AS
+    end
+
+    %% Core Services Layer
+    subgraph "🧠 Core Services Layer"
+        GE[Graph Engine<br/>Neo4j Database<br/>Attack Path Analysis<br/>Relationship Mapping]
+        PE[Policy Engine<br/>Rule Evaluation<br/>Compliance Checks<br/>Automated Remediation]
+        AE[Analytics Engine<br/>ML Models<br/>Anomaly Detection<br/>Pattern Recognition]
+        TI[Threat Intelligence<br/>IOC Management<br/>Threat Feeds<br/>Risk Scoring]
+        
+        AS --> GE
+        AS --> PE
+        AS --> AE
+        AS --> TI
+    end
+
+    %% Security & Performance Layer
+    subgraph "🛡️ Security & Performance Layer"
+        SE[Security Engine<br/>Penetration Testing<br/>Vulnerability Scanning<br/>Security Monitoring]
+        CE[Compliance Engine<br/>CIS, PCI DSS, HIPAA<br/>GDPR, SOC2<br/>Automated Assessments]
+        PF[Performance Engine<br/>Load Testing<br/>Stress Testing<br/>Database Performance]
+        PO[Performance Optimizer<br/>System Tuning<br/>Query Optimization<br/>Resource Management]
+        
+        PE --> SE
+        PE --> CE
+        AE --> PF
+        GE --> PO
+    end
+
+    %% Data Storage Layer
+    subgraph "💾 Data Storage Layer"
+        NEO4J[(Neo4j Graph DB<br/>Security Graph<br/>Relationship Data)]
+        REDIS[(Redis Cache<br/>Performance Metrics<br/>Session Data)]
+        POSTGRES[(PostgreSQL<br/>Application Data<br/>Audit Logs)]
+        S3[(AWS S3<br/>Log Storage<br/>Backup Data)]
+        
+        GE --> NEO4J
+        AE --> REDIS
+        PE --> POSTGRES
+        SE --> S3
+        PF --> POSTGRES
+    end
+
+    %% Monitoring & Observability
+    subgraph "📊 Monitoring & Observability"
+        PROM[Prometheus<br/>Metrics Collection]
+        GRAF[Grafana<br/>Dashboards<br/>Visualization]
+        ELK[ELK Stack<br/>Log Aggregation<br/>Search & Analysis]
+        JAEGER[Jaeger<br/>Distributed Tracing<br/>Performance Monitoring]
+        
+        PF --> PROM
+        SE --> PROM
+        PROM --> GRAF
+        AS --> ELK
+        AG --> JAEGER
+    end
+
+    %% Frontend Layer
+    subgraph "🎯 Frontend Layer"
+        DASH[Web Dashboard<br/>Real-time Monitoring<br/>Interactive Charts<br/>Alert Management]
+        CLI[CLI Tools<br/>Command Line Interface<br/>Automation Scripts]
+        API[REST API<br/>GraphQL API<br/>Webhook Endpoints]
+        
+        AG --> API
+        API --> DASH
+        API --> CLI
+    end
+
+    %% Infrastructure Layer
+    subgraph "🏗️ Infrastructure Layer"
+        K8S[Kubernetes<br/>Container Orchestration<br/>Auto-scaling]
+        TF[Terraform<br/>Infrastructure as Code<br/>Multi-cloud Deployment]
+        CI[CI/CD Pipeline<br/>GitLab CI<br/>GitHub Actions<br/>Jenkins]
+        
+        K8S -.-> DASH
+        K8S -.-> API
+        TF -.-> K8S
+        CI -.-> K8S
+    end
+
+    %% Alert & Notification System
+    subgraph "🚨 Alert & Notification System"
+        AH[Alert Handler<br/>Slack Integration<br/>Email Notifications<br/>Webhook Support]
+        NS[Notification Service<br/>Alert Escalation<br/>Multi-channel Delivery]
+        
+        SE --> AH
+        PF --> AH
+        CE --> AH
+        AH --> NS
+    end
+
+    %% Styling
+    classDef cloud fill:#e1f5fe,stroke:#01579b,stroke-width:2px
+    classDef api fill:#f3e5f5,stroke:#4a148c,stroke-width:2px
+    classDef service fill:#e8f5e8,stroke:#1b5e20,stroke-width:2px
+    classDef storage fill:#fff3e0,stroke:#e65100,stroke-width:2px
+    classDef monitoring fill:#fce4ec,stroke:#880e4f,stroke-width:2px
+    classDef frontend fill:#e0f2f1,stroke:#004d40,stroke-width:2px
+    classDef infra fill:#f1f8e9,stroke:#33691e,stroke-width:2px
+    classDef alert fill:#ffebee,stroke:#b71c1c,stroke-width:2px
+
+    class AWS,AZURE,GCP cloud
+    class AG,SM,AS api
+    class GE,PE,AE,TI,SE,CE,PF,PO service
+    class NEO4J,REDIS,POSTGRES,S3 storage
+    class PROM,GRAF,ELK,JAEGER monitoring
+    class DASH,CLI,API frontend
+    class K8S,TF,CI infra
+    class AH,NS alert
 ```
 
 ---
