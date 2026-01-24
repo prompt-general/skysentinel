@@ -27,20 +27,21 @@ SkySentinel is a comprehensive, production-ready security platform that provides
 ## 🏗️ Architecture Overview
 
 ```mermaid
+%%{init: {'theme': 'base', 'themeVariables': { 'primaryColor': '#e1f5fe', 'primaryTextColor': '#01579b', 'primaryBorderColor': '#01579b', 'lineColor': '#01579b', 'fontSize': '16px', 'fontFamily': 'Arial, sans-serif'}}}%%
 graph TB
     %% External Cloud Providers
-    subgraph "☁️ Cloud Providers"
-        AWS[AWS Services<br/>CloudTrail, GuardDuty, S3]
-        AZURE[Azure Services<br/>Sentinel, Activity Logs]
-        GCP[GCP Services<br/>Security Command Center]
+    subgraph "☁️ CLOUD PROVIDERS"
+        AWS["<b>AWS SERVICES</b><br/><font size=14>CloudTrail<br/>GuardDuty<br/>S3</font>"]
+        AZURE["<b>AZURE SERVICES</b><br/><font size=14>Sentinel<br/>Activity Logs</font>"]
+        GCP["<b>GCP SERVICES</b><br/><font size=14>Security Command<br/>Center</font>"]
     end
 
     %% Event Collection Layer
-    subgraph "📡 Event Collection Layer"
-        EC1[AWS Event Collector]
-        EC2[Azure Event Collector]
-        EC3[GCP Event Collector]
-        EC4[Custom Collectors]
+    subgraph "📡 EVENT COLLECTION"
+        EC1["<b>AWS COLLECTOR</b><br/><font size=14>Event Processing</font>"]
+        EC2["<b>AZURE COLLECTOR</b><br/><font size=14>Event Processing</font>"]
+        EC3["<b>GCP COLLECTOR</b><br/><font size=14>Event Processing</font>"]
+        EC4["<b>CUSTOM COLLECTORS</b><br/><font size=14>Third-party</font>"]
         
         AWS --> EC1
         AZURE --> EC2
@@ -48,10 +49,10 @@ graph TB
     end
 
     %% API Gateway Layer
-    subgraph "🚀 API Gateway Layer"
-        AG[API Gateway<br/>Authentication<br/>Rate Limiting<br/>Request Validation]
-        SM[Security Middleware<br/>JWT Validation<br/>Input Validation]
-        AS[Audit Service<br/>Neo4j Logging<br/>Fallback File Logging]
+    subgraph "🚀 API GATEWAY"
+        AG["<b>API GATEWAY</b><br/><font size=14>Authentication<br/>Rate Limiting<br/>Request Validation</font>"]
+        SM["<b>SECURITY MIDDLEWARE</b><br/><font size=14>JWT Validation<br/>Input Validation</font>"]
+        AS["<b>AUDIT SERVICE</b><br/><font size=14>Neo4j Logging<br/>File Logging</font>"]
         
         EC1 --> AG
         EC2 --> AG
@@ -62,11 +63,11 @@ graph TB
     end
 
     %% Core Services Layer
-    subgraph "🧠 Core Services Layer"
-        GE[Graph Engine<br/>Neo4j Database<br/>Attack Path Analysis<br/>Relationship Mapping]
-        PE[Policy Engine<br/>Rule Evaluation<br/>Compliance Checks<br/>Automated Remediation]
-        AE[Analytics Engine<br/>ML Models<br/>Anomaly Detection<br/>Pattern Recognition]
-        TI[Threat Intelligence<br/>IOC Management<br/>Threat Feeds<br/>Risk Scoring]
+    subgraph "🧠 CORE SERVICES"
+        GE["<b>GRAPH ENGINE</b><br/><font size=14>Neo4j Database<br/>Attack Path Analysis<br/>Relationship Mapping</font>"]
+        PE["<b>POLICY ENGINE</b><br/><font size=14>Rule Evaluation<br/>Compliance Checks<br/>Automated Remediation</font>"]
+        AE["<b>ANALYTICS ENGINE</b><br/><font size=14>ML Models<br/>Anomaly Detection<br/>Pattern Recognition</font>"]
+        TI["<b>THREAT INTELLIGENCE</b><br/><font size=14>IOC Management<br/>Threat Feeds<br/>Risk Scoring</font>"]
         
         AS --> GE
         AS --> PE
@@ -75,11 +76,11 @@ graph TB
     end
 
     %% Security & Performance Layer
-    subgraph "🛡️ Security & Performance Layer"
-        SE[Security Engine<br/>Penetration Testing<br/>Vulnerability Scanning<br/>Security Monitoring]
-        CE[Compliance Engine<br/>CIS, PCI DSS, HIPAA<br/>GDPR, SOC2<br/>Automated Assessments]
-        PF[Performance Engine<br/>Load Testing<br/>Stress Testing<br/>Database Performance]
-        PO[Performance Optimizer<br/>System Tuning<br/>Query Optimization<br/>Resource Management]
+    subgraph "🛡️ SECURITY & PERFORMANCE"
+        SE["<b>SECURITY ENGINE</b><br/><font size=14>Penetration Testing<br/>Vulnerability Scanning<br/>Security Monitoring</font>"]
+        CE["<b>COMPLIANCE ENGINE</b><br/><font size=14>CIS, PCI DSS, HIPAA<br/>GDPR, SOC2<br/>Automated Assessments</font>"]
+        PF["<b>PERFORMANCE ENGINE</b><br/><font size=14>Load Testing<br/>Stress Testing<br/>Database Performance</font>"]
+        PO["<b>PERFORMANCE OPTIMIZER</b><br/><font size=14>System Tuning<br/>Query Optimization<br/>Resource Management</font>"]
         
         PE --> SE
         PE --> CE
@@ -88,11 +89,11 @@ graph TB
     end
 
     %% Data Storage Layer
-    subgraph "💾 Data Storage Layer"
-        NEO4J[(Neo4j Graph DB<br/>Security Graph<br/>Relationship Data)]
-        REDIS[(Redis Cache<br/>Performance Metrics<br/>Session Data)]
-        POSTGRES[(PostgreSQL<br/>Application Data<br/>Audit Logs)]
-        S3[(AWS S3<br/>Log Storage<br/>Backup Data)]
+    subgraph "💾 DATA STORAGE"
+        NEO4J["<b>NEO4J GRAPH DB</b><br/><font size=14>Security Graph<br/>Relationship Data</font>"]
+        REDIS["<b>REDIS CACHE</b><br/><font size=14>Performance Metrics<br/>Session Data</font>"]
+        POSTGRES["<b>POSTGRESQL</b><br/><font size=14>Application Data<br/>Audit Logs</font>"]
+        S3["<b>AWS S3</b><br/><font size=14>Log Storage<br/>Backup Data</font>"]
         
         GE --> NEO4J
         AE --> REDIS
@@ -102,11 +103,11 @@ graph TB
     end
 
     %% Monitoring & Observability
-    subgraph "📊 Monitoring & Observability"
-        PROM[Prometheus<br/>Metrics Collection]
-        GRAF[Grafana<br/>Dashboards<br/>Visualization]
-        ELK[ELK Stack<br/>Log Aggregation<br/>Search & Analysis]
-        JAEGER[Jaeger<br/>Distributed Tracing<br/>Performance Monitoring]
+    subgraph "📊 MONITORING & OBSERVABILITY"
+        PROM["<b>PROMETHEUS</b><br/><font size=14>Metrics Collection</font>"]
+        GRAF["<b>GRAFANA</b><br/><font size=14>Dashboards<br/>Visualization</font>"]
+        ELK["<b>ELK STACK</b><br/><font size=14>Log Aggregation<br/>Search & Analysis</font>"]
+        JAEGER["<b>JAEGER</b><br/><font size=14>Distributed Tracing<br/>Performance Monitoring</font>"]
         
         PF --> PROM
         SE --> PROM
@@ -116,10 +117,10 @@ graph TB
     end
 
     %% Frontend Layer
-    subgraph "🎯 Frontend Layer"
-        DASH[Web Dashboard<br/>Real-time Monitoring<br/>Interactive Charts<br/>Alert Management]
-        CLI[CLI Tools<br/>Command Line Interface<br/>Automation Scripts]
-        API[REST API<br/>GraphQL API<br/>Webhook Endpoints]
+    subgraph "🎯 FRONTEND"
+        DASH["<b>WEB DASHBOARD</b><br/><font size=14>Real-time Monitoring<br/>Interactive Charts<br/>Alert Management</font>"]
+        CLI["<b>CLI TOOLS</b><br/><font size=14>Command Line Interface<br/>Automation Scripts</font>"]
+        API["<b>REST & GRAPHQL API</b><br/><font size=14>Webhook Endpoints</font>"]
         
         AG --> API
         API --> DASH
@@ -127,10 +128,10 @@ graph TB
     end
 
     %% Infrastructure Layer
-    subgraph "🏗️ Infrastructure Layer"
-        K8S[Kubernetes<br/>Container Orchestration<br/>Auto-scaling]
-        TF[Terraform<br/>Infrastructure as Code<br/>Multi-cloud Deployment]
-        CI[CI/CD Pipeline<br/>GitLab CI<br/>GitHub Actions<br/>Jenkins]
+    subgraph "🏗️ INFRASTRUCTURE"
+        K8S["<b>KUBERNETES</b><br/><font size=14>Container Orchestration<br/>Auto-scaling</font>"]
+        TF["<b>TERRAFORM</b><br/><font size=14>Infrastructure as Code<br/>Multi-cloud Deployment</font>"]
+        CI["<b>CI/CD PIPELINE</b><br/><font size=14>GitLab CI<br/>GitHub Actions<br/>Jenkins</font>"]
         
         K8S -.-> DASH
         K8S -.-> API
@@ -139,9 +140,9 @@ graph TB
     end
 
     %% Alert & Notification System
-    subgraph "🚨 Alert & Notification System"
-        AH[Alert Handler<br/>Slack Integration<br/>Email Notifications<br/>Webhook Support]
-        NS[Notification Service<br/>Alert Escalation<br/>Multi-channel Delivery]
+    subgraph "🚨 ALERTS & NOTIFICATIONS"
+        AH["<b>ALERT HANDLER</b><br/><font size=14>Slack Integration<br/>Email Notifications<br/>Webhook Support</font>"]
+        NS["<b>NOTIFICATION SERVICE</b><br/><font size=14>Alert Escalation<br/>Multi-channel Delivery</font>"]
         
         SE --> AH
         PF --> AH
@@ -149,15 +150,15 @@ graph TB
         AH --> NS
     end
 
-    %% Styling
-    classDef cloud fill:#e1f5fe,stroke:#01579b,stroke-width:2px
-    classDef api fill:#f3e5f5,stroke:#4a148c,stroke-width:2px
-    classDef service fill:#e8f5e8,stroke:#1b5e20,stroke-width:2px
-    classDef storage fill:#fff3e0,stroke:#e65100,stroke-width:2px
-    classDef monitoring fill:#fce4ec,stroke:#880e4f,stroke-width:2px
-    classDef frontend fill:#e0f2f1,stroke:#004d40,stroke-width:2px
-    classDef infra fill:#f1f8e9,stroke:#33691e,stroke-width:2px
-    classDef alert fill:#ffebee,stroke:#b71c1c,stroke-width:2px
+    %% Enhanced Styling
+    classDef cloud fill:#e1f5fe,stroke:#01579b,stroke-width:3px,color:#01579b
+    classDef api fill:#f3e5f5,stroke:#4a148c,stroke-width:3px,color:#4a148c
+    classDef service fill:#e8f5e8,stroke:#1b5e20,stroke-width:3px,color:#1b5e20
+    classDef storage fill:#fff3e0,stroke:#e65100,stroke-width:3px,color:#e65100
+    classDef monitoring fill:#fce4ec,stroke:#880e4f,stroke-width:3px,color:#880e4f
+    classDef frontend fill:#e0f2f1,stroke:#004d40,stroke-width:3px,color:#004d40
+    classDef infra fill:#f1f8e9,stroke:#33691e,stroke-width:3px,color:#33691e
+    classDef alert fill:#ffebee,stroke:#b71c1c,stroke-width:3px,color:#b71c1c
 
     class AWS,AZURE,GCP cloud
     class AG,SM,AS api
